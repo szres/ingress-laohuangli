@@ -1,4 +1,4 @@
-module laohuangli-lite-go
+module ingress-laohuangli
 
 go 1.22
 
@@ -6,6 +6,7 @@ require (
 	github.com/Nigh/kuma-push v0.1.0
 	github.com/adrg/strutil v0.3.1
 	github.com/nanobox-io/golang-scribble v0.0.0-20190309225732-aa3e7c118975
+	github.com/sashabaranov/go-openai v1.27.1
 	github.com/satori/go.uuid v1.2.0
 	github.com/valyala/fasttemplate v1.2.2
 	golang.org/x/sync v0.0.0-20220513210516-0976fa681c29
