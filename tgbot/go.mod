@@ -1,4 +1,4 @@
-module laohuangli-lite-go
+module ingress-laohuangli
 
 go 1.22
 

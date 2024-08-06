@@ -1,5 +1,5 @@
 <div align="center">
-<img src="https://socialify.git.ci/szres/ingress-laohuangli/image?font=KoHo&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2Fszres%2Fingress-laohuangli%2Fmain%2Fwebsite%2Fstatic%2Ffavicon.png&name=1&pattern=Circuit%20Board&stargazers=1&theme=Auto" alt="laohuangli-lite-go" width="640" height="320" />
+<img src="https://socialify.git.ci/szres/ingress-laohuangli/image?font=KoHo&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2Fszres%2Fingress-laohuangli%2Fmain%2Fwebsite%2Fstatic%2Ffavicon.png&name=1&pattern=Circuit%20Board&stargazers=1&theme=Auto" alt="ingress-laohuangli" width="640" height="320" />
 </div>
    
 # Ingress老黄历
