@@ -18,9 +18,10 @@ import (
 )
 
 type testenv struct {
-	Token   string `json:"token"`
-	AdminID string `json:"adminid"`
-	KumaURL string `json:"kumaurl"`
+	Token     string `json:"token"`
+	AdminID   string `json:"adminid"`
+	KumaURL   string `json:"kumaurl"`
+	OpenAiKey string `json:"openaikey"`
 }
 
 var testEnv testenv
@@ -44,6 +45,7 @@ var (
 	gAdminID     int64
 	gKumaPushURL string
 	gToken       string
+	gAPIKey      string
 
 	gStrCompareAlgo *metrics.Jaro
 )
@@ -61,16 +63,20 @@ func init() {
 		gToken = testEnv.Token
 		gAdminID, _ = strconv.ParseInt(testEnv.AdminID, 10, 64)
 		gKumaPushURL = testEnv.KumaURL
+		gAPIKey = testEnv.OpenAiKey
 	} else {
 		gToken = os.Getenv("BOT_TOKEN")
 		gAdminID, _ = strconv.ParseInt(os.Getenv("BOT_ADMIN_ID"), 10, 64)
 		gKumaPushURL = os.Getenv("KUMA_PUSH_URL")
+		gAPIKey = os.Getenv("OPENAI_API_KEY")
 	}
 	gStrCompareAlgo = metrics.NewJaro()
 	gStrCompareAlgo.CaseSensitive = false
-	fmt.Printf("gToken:%s\ngAdminID:%d\ngKumaPushURL:%s\n", gToken, gAdminID, gKumaPushURL)
+	// fmt.Printf("gToken:%s\ngAdminID:%d\ngKumaPushURL:%s\ngAPIKey:%s\n", gToken, gAdminID, gKumaPushURL, gAPIKey)
 	k := kuma.New(gKumaPushURL)
 	k.Start()
+	initOpenAI()
+
 	go func() {
 		http.Handle("/", http.FileServer(http.Dir("../db/datas")))
 		err := http.ListenAndServe(":80", nil)
