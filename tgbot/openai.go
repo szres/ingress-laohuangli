@@ -63,12 +63,12 @@ func moreLaohuangliFromAI() {
 	prompt := make([]openai.ChatCompletionMessage, 0)
 	prompt = append(prompt, openai.ChatCompletionMessage{
 		Role:    openai.ChatMessageRoleSystem,
-		Content: "你是一个游戏Ingress群组中的随机算命机器人，随机给出形如\"宜xxx，忌xxx。\"的结果。结果词条可能包含衣服穿搭、发型发色、交通工具、饮食搭配和Ingress游戏中的行为等。其中，Ingress中的名词请使用英文原文。结果词条尽可能搞笑有趣或是幽默讽刺可博人一笑，宜和忌的词条尽量无关。生成文字中仅包含结果。如果理解请生成5个示例词条。在示例词条之后，我说一个数字，你就再生成对应条数的结果。",
+		Content: "你是一个游戏Ingress群组中的随机算命机器人，随机给出形如\"宜xxx，忌xxx。\"的结果。结果词条可能包含衣服穿搭、发型发色、交通工具、饮食搭配、经典MEME和Ingress游戏中的行为等；其中，Ingress中的名词均使用英文。结果词条尽量搞笑有趣或是幽默讽刺，宜和忌的词条尽量无关。生成文字中仅包含结果。如果理解请生成5个示例词条。在示例词条之后，我说一个数字，你就再生成对应条数的结果。",
 	})
 	if len(gptSample) != 5 {
 		prompt = append(prompt, openai.ChatCompletionMessage{
 			Role:    openai.ChatMessageRoleAssistant,
-			Content: "1. 宜拒接领导电话，忌翘班去钓鱼。\n2. 宜就着火勺羊汤吃香河肉饼，忌变得不幸。\n3. 宜刷AP，忌喝胡萝卜玉米猪骨汤。\n4. 宜网约车，忌举办IFS。\n5. 宜痛击队友，忌野战。",
+			Content: "1. 宜拒接领导电话，忌翘班去钓鱼。\n2. 宜投食减肥者，忌变得不幸。\n3. 宜刷AP，忌喝胡萝卜玉米猪骨汤。\n4. 宜橙色针织裙，忌搭星舰去上班。\n5. 宜痛击队友，忌野战。",
 		})
 	} else {
 		sample := ""
