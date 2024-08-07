@@ -323,13 +323,12 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 			body = "诸事皆宜。愿好运与你同行。"
 		}
 	} else {
-		if pp == 1 && np == 1 && len(gptLaohuangli) > 0 {
+		if pp == 1 && np == 1 && gptLaohuangliValid() {
 			randInt, _ := rand.Int(rand.Reader, big.NewInt(int64(25600)))
 			fmt.Println("AI random:", randInt.Uint64())
 			if randInt.Cmp(big.NewInt(17920)) >= 0 {
 				head = "今日(AI)：\n"
-				body = gptLaohuangli[0]
-				gptLaohuangli = gptLaohuangli[1:]
+				body = gptLaohuangliPop()
 			}
 		}
 	}
