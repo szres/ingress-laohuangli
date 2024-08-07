@@ -38,6 +38,7 @@ func initOpenAI() {
 
 func gptSampleApped(s string) {
 	gptSample = append(gptSample, s)
+	fmt.Println("gptSample append:", s)
 	for len(gptSample) > 5 {
 		gptSample = gptSample[1:]
 	}

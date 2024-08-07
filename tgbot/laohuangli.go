@@ -325,7 +325,8 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 	} else {
 		if pp == 1 && np == 1 && len(gptLaohuangli) > 0 {
 			randInt, _ := rand.Int(rand.Reader, big.NewInt(int64(25600)))
-			if randInt.Cmp(big.NewInt(23040)) >= 0 {
+			fmt.Println("AI random:", randInt.Uint64())
+			if randInt.Cmp(big.NewInt(17920)) >= 0 {
 				head = "今日(AI)：\n"
 				body = gptLaohuangli[0]
 				gptLaohuangli = gptLaohuangli[1:]
