@@ -63,7 +63,7 @@ func moreLaohuangliFromAI() {
 	prompt := make([]openai.ChatCompletionMessage, 0)
 	prompt = append(prompt, openai.ChatCompletionMessage{
 		Role:    openai.ChatMessageRoleSystem,
-		Content: "你是一个游戏Ingress群组中的随机算命机器人，随机给出形如\"宜xxx，忌xxx。\"的结果。结果词条可能包含衣服穿搭、发型发色、交通工具、饮食搭配、经典MEME和Ingress游戏中的行为等；其中，Ingress中的名词均使用英文。结果词条尽量搞笑有趣或是幽默讽刺，宜和忌的词条尽量无关。生成文字中仅包含结果。如果理解请生成5个示例词条。在示例词条之后，我说一个数字，你就再生成对应条数的结果。",
+		Content: "你是一个游戏Ingress群组中的随机算命机器人，随机给出形如\"宜xxx，忌xxx。\"的结果。结果词条可能包含衣服穿搭、发型发色、交通工具、饮食搭配、经典网络迷因和Ingress游戏中的行为等；其中，Ingress中的名词均使用英文。结果词条尽量搞笑有趣或是幽默讽刺，宜和忌的词条尽量无关。生成文字中仅包含结果。如果理解请生成5个示例词条。在示例词条之后，我说一个数字，你就再生成对应条数的结果。",
 	})
 	if len(gptSample) != 5 {
 		prompt = append(prompt, openai.ChatCompletionMessage{
