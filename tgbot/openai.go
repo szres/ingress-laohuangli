@@ -9,6 +9,7 @@ import (
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
+	"golang.org/x/exp/rand"
 )
 
 var gptClient *openai.Client
@@ -29,11 +30,25 @@ func initOpenAI() {
 	go func() {
 		ticker := time.NewTicker(60 * time.Second)
 		for range ticker.C {
-			if len(gptLaohuangli) < 5 {
+			if len(gptLaohuangli) < 12 {
 				moreLaohuangliFromAI()
 			}
 		}
 	}()
+}
+
+func gptLaohuangliValid() bool {
+	return len(gptLaohuangli) > 0
+}
+
+func gptLaohuangliPop() string {
+	resultIdx := rand.Intn(len(gptLaohuangli))
+	result := gptLaohuangli[resultIdx]
+	gptLaohuangli = append(gptLaohuangli[:resultIdx], gptLaohuangli[resultIdx+1:]...)
+
+	randomIdx := rand.Intn(len(gptLaohuangli))
+	gptLaohuangli = append(gptLaohuangli[:randomIdx], gptLaohuangli[randomIdx+1:]...)
+	return result
 }
 
 func gptSampleApped(s string) {

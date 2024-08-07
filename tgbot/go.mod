@@ -9,6 +9,7 @@ require (
 	github.com/sashabaranov/go-openai v1.27.1
 	github.com/satori/go.uuid v1.2.0
 	github.com/valyala/fasttemplate v1.2.2
+	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
 	golang.org/x/sync v0.0.0-20220513210516-0976fa681c29
 	gonum.org/v1/gonum v0.14.0
 	gopkg.in/telebot.v3 v3.2.1
