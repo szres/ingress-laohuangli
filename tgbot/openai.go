@@ -53,7 +53,6 @@ func gptLaohuangliPop() string {
 
 func gptSampleApped(s string) {
 	gptSample = append(gptSample, s)
-	fmt.Println("gptSample append:", s)
 	for len(gptSample) > 5 {
 		gptSample = gptSample[1:]
 	}
@@ -65,21 +64,20 @@ func moreLaohuangliFromAI() {
 		Role:    openai.ChatMessageRoleSystem,
 		Content: "你是一个游戏Ingress群组中的随机算命机器人，随机给出形如\"宜xxx，忌xxx。\"的结果。结果词条可能包含衣服穿搭、发型发色、交通工具、饮食搭配、经典网络迷因和Ingress游戏中的行为等；其中，Ingress中的名词均使用英文。结果词条尽量搞笑有趣或是幽默讽刺，宜和忌的词条尽量无关。生成文字中仅包含结果。如果理解请生成5个示例词条。在示例词条之后，我说一个数字，你就再生成对应条数的结果。",
 	})
+
+	sample := ""
 	if len(gptSample) != 5 {
-		prompt = append(prompt, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleAssistant,
-			Content: "1. 宜拒接领导电话，忌翘班去钓鱼。\n2. 宜投食减肥者，忌变得不幸。\n3. 宜刷AP，忌喝胡萝卜玉米猪骨汤。\n4. 宜橙色针织裙，忌搭星舰去上班。\n5. 宜痛击队友，忌野战。",
-		})
+		sample = "1. 宜拒接领导电话，忌翘班去钓鱼。\n2. 宜投食减肥者，忌变得不幸。\n3. 宜刷AP，忌喝胡萝卜玉米猪骨汤。\n4. 宜橙色针织裙，忌搭星舰去上班。\n5. 宜痛击队友，忌把小鹿撞晕。"
 	} else {
-		sample := ""
 		for i, v := range gptSample {
 			sample += strconv.Itoa(i+1) + ". " + v + "\n"
 		}
-		prompt = append(prompt, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleAssistant,
-			Content: sample,
-		})
 	}
+	prompt = append(prompt, openai.ChatCompletionMessage{
+		Role:    openai.ChatMessageRoleAssistant,
+		Content: sample,
+	})
+	fmt.Println("generate AI result with:", sample)
 
 	prompt = append(prompt, openai.ChatCompletionMessage{
 		Role:    openai.ChatMessageRoleUser,
@@ -105,7 +103,7 @@ func moreLaohuangliFromAI() {
 			match := re.FindStringSubmatch(v)
 			if len(match) > 0 {
 				gptLaohuangli = append(gptLaohuangli, match[0])
-				fmt.Println("AI result added", match[0])
+				fmt.Println("AI result add:", match[0])
 			}
 		}
 	}
