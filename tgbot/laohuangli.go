@@ -326,12 +326,12 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 		if pp == 1 && np == 1 && gptLaohuangliValid() {
 			randInt, _ := rand.Int(rand.Reader, big.NewInt(int64(25600)))
 
-			if randInt.Cmp(big.NewInt(16000)) >= 0 {
+			if randInt.Cmp(big.NewInt(12800)) >= 0 {
 				head = "今日(AI)：\n"
 				body = gptLaohuangliPop()
 				fmt.Println("AI Hit:", body)
 			} else {
-				fmt.Println("AI miss:", randInt.Uint64(), "< 16000")
+				fmt.Println("AI miss:", randInt.Uint64(), "< 12800")
 			}
 		}
 	}
