@@ -29,6 +29,7 @@ type laohuangli struct {
 	entriesBanlanced []entry
 	templates        map[string]laohuangliTemplate
 	cache            laohuangliCache
+	annual           map[string]AnnualSummary
 }
 
 var laoHL laohuangli
@@ -42,9 +43,14 @@ func (lhl *laohuangli) init(db *scribble.Driver) {
 	*lhl = laohuangli{
 		db: db,
 	}
+
+	lhl.annual = make(map[string]AnnualSummary)
+	lhl.templates = make(map[string]laohuangliTemplate)
+
 	lhl.db.Read("datas", "laohuangli", &lhl.entries)
 	lhl.db.Read("datas", "templates", &lhl.templates)
 	lhl.db.Read("datas", "laohuangli-user", &lhl.entriesUser)
+	db.Read("annual", "2024", &lhl.annual)
 	lhl.cache.Init()
 
 	var lhlBanlancedEntries banlancedEntriesSave
@@ -251,6 +257,16 @@ func (lhl *laohuangli) randomThenDelete() (str string, err error) {
 	return
 }
 
+func (lhl *laohuangli) annualSummary(id int64) string {
+	if len(lhl.annual) == 0 {
+		return ""
+	}
+	if v, ok := lhl.annual[fmt.Sprintf("%d", id)]; ok {
+		return v.Content
+	}
+	return ""
+}
+
 func (lhl *laohuangli) randomToday(id int64, name string) string {
 	r := lhl.cache.Exist(id)
 	if len(r) > 0 {
@@ -373,6 +389,11 @@ type laohuangliCache struct {
 	Date   string                     `json:"date"`
 	Today  todayResults               `json:"today"`
 	Caches map[int64]laohuangliResult `json:"caches"`
+}
+
+type AnnualSummary struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
 }
 
 func (tr todayResults) String() (output string) {
