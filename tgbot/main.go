@@ -133,6 +133,12 @@ func main() {
 				results = append(results, buildVotes(v))
 			}
 		}
+		if len(laoHL.annualSummary(c.Sender().ID)) > 0 {
+			results = append(results, &tele.ArticleResult{
+				Title: "2024年度总结",
+				Text:  fullName(c.Sender()) + " 2024年度总结:\n" + laoHL.annualSummary(c.Sender().ID),
+			})
+		}
 		results = append(results, &tele.ArticleResult{
 			Title: "今日众生老黄历",
 			Text:  "今天是" + time.Now().Format("2006年01月02日") + "。\n" + laoHL.cache.Today.String(),
