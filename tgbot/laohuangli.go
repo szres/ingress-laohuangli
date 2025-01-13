@@ -50,7 +50,13 @@ func (lhl *laohuangli) init(db *scribble.Driver) {
 	lhl.db.Read("datas", "laohuangli", &lhl.entries)
 	lhl.db.Read("datas", "templates", &lhl.templates)
 	lhl.db.Read("datas", "laohuangli-user", &lhl.entriesUser)
-	db.Read("annual", "2024", &lhl.annual)
+
+	annualYear := getAnnualYear()
+	err := lhl.db.Read("annual", fmt.Sprintf("%d", annualYear), &lhl.annual)
+	if err != nil {
+		lhl.annual = make(map[string]AnnualSummary)
+	}
+
 	lhl.cache.Init()
 
 	var lhlBanlancedEntries banlancedEntriesSave
@@ -603,4 +609,17 @@ func (c *laohuangliCache) Exist(id int64) string {
 func (c *laohuangliCache) Push(id int64, name string, content string) {
 	result := laohuangliResult{Name: name, Result: content}
 	c.Caches[id] = result
+}
+
+func getAnnualYear() int {
+	now := time.Now()
+	currentYear := now.Year()
+	startDate := time.Date(currentYear, time.November, 20, 0, 0, 0, 0, time.Local)
+	endDate := time.Date(currentYear, time.January, 15, 23, 59, 59, 0, time.Local)
+	if now.After(startDate) {
+		return currentYear
+	} else if now.Before(endDate) {
+		return currentYear - 1
+	}
+	return 0
 }

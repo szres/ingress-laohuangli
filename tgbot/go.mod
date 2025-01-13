@@ -1,18 +1,20 @@
 module ingress-laohuangli
 
-go 1.22
+go 1.22.0
+
+toolchain go1.22.1
 
 require (
 	github.com/Nigh/kuma-push v0.1.0
 	github.com/adrg/strutil v0.3.1
 	github.com/nanobox-io/golang-scribble v0.0.0-20190309225732-aa3e7c118975
-	github.com/sashabaranov/go-openai v1.27.1
+	github.com/sashabaranov/go-openai v1.36.1
 	github.com/satori/go.uuid v1.2.0
 	github.com/valyala/fasttemplate v1.2.2
-	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
-	golang.org/x/sync v0.0.0-20220513210516-0976fa681c29
-	gonum.org/v1/gonum v0.14.0
-	gopkg.in/telebot.v3 v3.2.1
+	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8
+	golang.org/x/sync v0.10.0
+	gonum.org/v1/gonum v0.15.1
+	gopkg.in/telebot.v3 v3.3.8
 )
 
 require (
