@@ -334,7 +334,7 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 	}
 	body += "。"
 	if pp == 1 && np == 1 {
-		gptSampleApped(body)
+		AISampleApped(body)
 	}
 	// TODO: 重新实现
 	if strutil.Similarity(strSlice[0], strSlice[1], gStrCompareAlgo) > 0.95 {
@@ -345,13 +345,18 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 			body = "诸事皆宜。愿好运与你同行。"
 		}
 	} else {
-		if pp == 1 && np == 1 && gptLaohuangliValid() {
+		if pp == 1 && np == 1 {
 			randInt, _ := rand.Int(rand.Reader, big.NewInt(int64(25600)))
 
-			if randInt.Cmp(big.NewInt(12800)) >= 0 {
-				head = "今日(AI)：\n"
-				body = gptLaohuangliPop()
-				fmt.Println("AI Hit:", body)
+			if AIContentValid() && randInt.Cmp(big.NewInt(12800)) >= 0 {
+				AIContentPop, AIContentName := AIContentPop()
+				if len(AIContentPop) > 0 {
+					head = "今日(" + AIContentName + ")：\n"
+					body = AIContentPop
+					fmt.Println("AI Hit:", body)
+				} else {
+					fmt.Println("AI content NULL")
+				}
 			} else {
 				fmt.Println("AI miss:", randInt.Uint64(), "< 12800")
 			}
@@ -410,6 +415,13 @@ func (tr todayResults) String() (output string) {
 		"麦克风收集到的隐私录音预测了今天的最佳策略",
 		"网络延迟的随机波动预示着命运的流转",
 		"摄像头的噪点似乎诉说着今日的命运",
+		"服务器日志中的错误代码预示着今日的运势走向",
+		"浏览器缓存中的过期页面暗示了命运的转折",
+		"CPU风扇变化的转速诉说着今日的气运",
+		"无线信号的波动映射了人类的命运起伏",
+		"网页加载时随机闪烁的像素点暗示着命运的凶吉",
+		"鼠标在屏幕上无意识的游移预示了命运的轨迹难寻",
+		"扬声器中的静电噪声是命运的低语呢喃",
 	}
 	randInt, _ := rand.Int(rand.Reader, big.NewInt(int64(len(sh))))
 	output = sh[randInt.Int64()] + "：\n\n"
