@@ -18,6 +18,7 @@ require (
 )
 
 require (
+	github.com/google/generative-ai-go v0.19.0 // indirect
 	github.com/jcelliott/lumber v0.0.0-20160324203708-dd349441af25 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 )
