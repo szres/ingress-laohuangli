@@ -133,10 +133,12 @@ func main() {
 				results = append(results, buildVotes(v))
 			}
 		}
-		if len(laoHL.annualSummary(c.Sender().ID)) > 0 {
+		annualYear := getAnnualYear()
+		if annualYear > 0 && len(laoHL.annualSummary(c.Sender().ID)) > 0 {
+			annualTitle := fmt.Sprintf("%d年度总结", annualYear)
 			results = append(results, &tele.ArticleResult{
-				Title: "2024年度总结",
-				Text:  fullName(c.Sender()) + " 2024年度总结:\n" + laoHL.annualSummary(c.Sender().ID),
+				Title: annualTitle,
+				Text:  fullName(c.Sender()) + " " + annualTitle + ":\n" + laoHL.annualSummary(c.Sender().ID),
 			})
 		}
 		results = append(results, &tele.ArticleResult{
