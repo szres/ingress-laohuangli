@@ -32,22 +32,22 @@ type AIInstance struct {
 	Pool   []string
 }
 
-var AIs []AIInstance
+var AIs []*AIInstance
 
 func initAIs() {
-	AIs = make([]AIInstance, 0)
-	AIs = append(AIs, AIInstance{
+	AIs = make([]*AIInstance, 0)
+	AIs = append(AIs, &AIInstance{
 		Name:   "GPT4oMini",
 		Init:   initOpenAI,
 		Update: getContentOpenAI,
 	})
-	AIs = append(AIs, AIInstance{
+	AIs = append(AIs, &AIInstance{
 		Name:   "Gemini2.0flash",
 		Init:   initGemini,
 		Update: getContentGemini,
 	})
 	for _, ai := range AIs {
-		ai.Init(&ai)
+		ai.Init(ai)
 	}
 }
 
