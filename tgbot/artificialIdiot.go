@@ -63,7 +63,8 @@ func initGemini(self *AIInstance) {
 	go func() {
 		ticker := time.NewTicker(60 * time.Second)
 		for range ticker.C {
-			if len(self.Pool) < 12 {
+			if len(self.Pool) < 5 {
+				self.Pool = make([]string, 0)
 				getContentGemini(self)
 			}
 		}
@@ -118,7 +119,8 @@ func initOpenAI(self *AIInstance) {
 	go func() {
 		ticker := time.NewTicker(60 * time.Second)
 		for range ticker.C {
-			if len(self.Pool) < 12 {
+			if len(self.Pool) < 5 {
+				self.Pool = make([]string, 0)
 				getContentOpenAI(self)
 			}
 		}
