@@ -334,7 +334,7 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 	}
 	body += "。"
 	if pp == 1 && np == 1 {
-		gptSampleApped(body)
+		AISampleApped(body)
 	}
 	// TODO: 重新实现
 	if strutil.Similarity(strSlice[0], strSlice[1], gStrCompareAlgo) > 0.95 {
@@ -345,13 +345,18 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 			body = "诸事皆宜。愿好运与你同行。"
 		}
 	} else {
-		if pp == 1 && np == 1 && gptLaohuangliValid() {
+		if pp == 1 && np == 1 {
 			randInt, _ := rand.Int(rand.Reader, big.NewInt(int64(25600)))
 
-			if randInt.Cmp(big.NewInt(12800)) >= 0 {
-				head = "今日(AI)：\n"
-				body = gptLaohuangliPop()
-				fmt.Println("AI Hit:", body)
+			if AIContentValid() && randInt.Cmp(big.NewInt(12800)) >= 0 {
+				AIContentPop, AIContentName := AIContentPop()
+				if len(AIContentPop) > 0 {
+					head = "今日(" + AIContentName + ")：\n"
+					body = AIContentPop
+					fmt.Println("AI Hit:", body)
+				} else {
+					fmt.Println("AI content NULL")
+				}
 			} else {
 				fmt.Println("AI miss:", randInt.Uint64(), "< 12800")
 			}
