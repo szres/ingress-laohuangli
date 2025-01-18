@@ -15,10 +15,20 @@ import (
 )
 
 var gptClient *openai.Client
-var AISamples []string
+var AISamples []string = []string{
+	"拒接领导电话",
+	"翘班去钓鱼",
+	"边砍圣诞树边刷AP",
+	"投食减肥者",
+	"变得不幸",
+	"橙色针织裙",
+	"搭星舰去上班",
+	"带猫猫参加IFS",
+	"胡萝卜玉米猪骨汤",
+}
 
-var sampleDefault = "宜拒接领导电话，忌翘班去钓鱼。\n宜投食减肥者，忌变得不幸。\n宜刷AP，忌喝胡萝卜玉米猪骨汤。\n宜橙色针织裙，忌搭星舰去上班。\n宜痛击队友，忌把小鹿撞晕。"
-var promptDefault = "你是一个Ingress游戏群组中的随机算命机器人，随机给出形如\"宜xxx，忌xxx。\"的结果。结果词条可以包含与当前日期相关的节日活动、衣服穿搭、发型发色、交通工具、饮食搭配、经典网络迷因和Ingress游戏中的行为等；其中，Ingress中的名词均使用英文，包含ingress行为的词条不要超过一半。结果尽量搞笑有趣、幽默讽刺。以下是5个参考示例词条。请再生成10条结果每个结果单独一行，生成文字中仅包含结果。\n"
+var promptDefault = "你是一个算命机器人，会随机给出一个今天的幸运物或者行为词条，词条范围包含但不限于与今天日期相关的节日活动、Ingress游戏中的行为、衣服穿搭、发型发色、交通工具、饮食搭配、经典网络迷因等等各种有趣的东西；其中，Ingress中的名词均使用英文。词条必须简短不含逗号，但是需要搞笑有趣、幽默讽刺。当今天是节日时，生成词条尽量与节日相关，生成词条均以大括号{}括住，请参考后面的生成词条示例，再生成10条词条。\n"
+var promptEnd = "请仅回答生成的词条，每个词条一行。"
 
 func todayChineseDate() string {
 	t := time.Now()
@@ -61,10 +71,9 @@ func initGemini(self *AIInstance) {
 
 	getContentGemini(self)
 	go func() {
-		ticker := time.NewTicker(60 * time.Second)
+		ticker := time.NewTicker(30 * time.Second)
 		for range ticker.C {
-			if len(self.Pool) < 5 {
-				self.Pool = make([]string, 0)
+			if len(self.Pool) < 10 {
 				getContentGemini(self)
 			}
 		}
@@ -91,12 +100,15 @@ func getContentGemini(self *AIInstance) {
 		if cand.Content != nil {
 			for _, part := range cand.Content.Parts {
 				lines := strings.Split(fmt.Sprint(part), "\n")
-				re := regexp.MustCompile(`宜.+?，忌.+?。`)
+				re := regexp.MustCompile(`\{宜(.+?)\}`)
 				for _, v := range lines {
 					match := re.FindStringSubmatch(v)
 					if len(match) > 0 {
-						self.Pool = append(self.Pool, match[0])
-						fmt.Println(self.Name, "AI result add:", match[0])
+						self.Pool = append(self.Pool, match[1])
+						fmt.Println(self.Name, "AI result add:", match[1])
+					}
+					for len(self.Pool) >= 15 {
+						self.Pool = self.Pool[1:]
 					}
 				}
 			}
@@ -117,10 +129,9 @@ func initOpenAI(self *AIInstance) {
 
 	getContentOpenAI(self)
 	go func() {
-		ticker := time.NewTicker(60 * time.Second)
+		ticker := time.NewTicker(30 * time.Second)
 		for range ticker.C {
-			if len(self.Pool) < 5 {
-				self.Pool = make([]string, 0)
+			if len(self.Pool) < 10 {
 				getContentOpenAI(self)
 			}
 		}
@@ -136,18 +147,20 @@ func AIContentValid() bool {
 }
 
 func AIContentPop() (result string, name string) {
-	resultIdx := rand.Intn(len(AIs))
-	if len(AIs[resultIdx].Pool) == 0 {
+	aiIdx := rand.Intn(len(AIs))
+	if len(AIs[aiIdx].Pool) == 0 {
 		return "", ""
 	}
-	result = AIs[resultIdx].Pool[rand.Intn(len(AIs[resultIdx].Pool))]
-	AIs[resultIdx].Pool = append(AIs[resultIdx].Pool[:resultIdx], AIs[resultIdx].Pool[resultIdx+1:]...)
-	return result, AIs[resultIdx].Name
+	resultIdx := rand.Intn(len(AIs[aiIdx].Pool))
+	result = AIs[aiIdx].Pool[resultIdx]
+	AIs[aiIdx].Pool = append(AIs[aiIdx].Pool[:resultIdx], AIs[aiIdx].Pool[resultIdx+1:]...)
+	fmt.Println(AIs[aiIdx].Name, "len:", len(AIs[aiIdx].Pool), "result:", result)
+	return result, AIs[aiIdx].Name
 }
 
 func AISampleApped(s string) {
 	AISamples = append(AISamples, s)
-	for len(AISamples) > 5 {
+	for len(AISamples) > 13 {
 		AISamples = AISamples[1:]
 	}
 }
@@ -174,12 +187,15 @@ func getContentOpenAI(self *AIInstance) {
 		fmt.Println("Error", err)
 	} else {
 		lines := strings.Split(resp.Choices[0].Message.Content, "\n")
-		re := regexp.MustCompile(`宜.+?，忌.+?。`)
+		re := regexp.MustCompile(`\{宜(.+?)\}`)
 		for _, v := range lines {
 			match := re.FindStringSubmatch(v)
 			if len(match) > 0 {
-				self.Pool = append(self.Pool, match[0])
-				fmt.Println(self.Name, "AI result add:", match[0])
+				self.Pool = append(self.Pool, match[1])
+				fmt.Println(self.Name, "AI result add:", match[1])
+			}
+			for len(self.Pool) >= 15 {
+				self.Pool = self.Pool[1:]
 			}
 		}
 	}
@@ -187,15 +203,11 @@ func getContentOpenAI(self *AIInstance) {
 
 func getPrompt() string {
 	sample := ""
-	if len(AISamples) < 5 {
-		sample = sampleDefault
-	} else {
-		for _, v := range AISamples {
-			sample += v + "\n"
-		}
+	for _, v := range AISamples {
+		sample += "{宜" + v + "} "
 	}
 	fmt.Println("generate AI result with:\n", sample)
 
-	p := "今天是" + todayChineseDate() + "，" + promptDefault + sample
+	p := promptDefault + sample + "\n今天是" + todayChineseDate() + "，" + promptEnd
 	return p
 }

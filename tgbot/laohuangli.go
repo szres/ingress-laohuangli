@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"slices"
 	"sort"
+	"strconv"
 	"time"
 	_ "time/tzdata"
 
@@ -286,15 +287,15 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 	case 0:
 		pp = 4
 		np = 1
-		head = "作为今日第一位祈求命运之人，洞察到了清晰的命运，今日：\n"
+		head = "作为今日第一位祈求命运之人，洞察到了清晰的命运，今日"
 	case 1:
 		pp = 3
 		np = 1
-		head = "为今日第二位老黄历用户，祈求的命运已开始模糊，今日：\n"
+		head = "为今日第二位老黄历用户，祈求的命运已开始模糊，今日"
 	case 12:
 		pp = 1
 		np = 5
-		head = "作为第十三位祈求命运之人，命运的天平将为他倾斜，今日：\n"
+		head = "作为第十三位祈求命运之人，命运的天平将为他倾斜，今日"
 	default:
 		pp = 1
 		np = 1
@@ -306,9 +307,10 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 		if randInt.Cmp(big.NewInt(95000)) >= 0 {
 			np += 1
 		}
-		head = "今日：\n"
+		head = "今日"
 	}
 	strSlice := make([]string, 0)
+	aiContentCount := 0
 	for i := 0; i < pp+np; i++ {
 		var err error
 		var str string
@@ -316,9 +318,22 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 			str = ingressStr()
 		}
 		if str == "" {
-			str, err = lhl.randomNotDelete()
-			if err != nil {
-				return "发现错误，请上报管理员:\n[ERROR]" + err.Error()
+			randInt, _ := rand.Int(rand.Reader, big.NewInt(int64(25600)))
+			if AIContentValid() && randInt.Cmp(big.NewInt(12800)) >= 0 {
+				AIContent, _ := AIContentPop()
+				aiContentCount += 1
+				if len(AIContent) > 0 {
+					str = AIContent
+				} else {
+					str = "给管理员报错"
+					fmt.Println("[ERROR] AI content NULL")
+				}
+			} else {
+				str, err = lhl.randomNotDelete()
+				if err != nil {
+					return "发现错误，请上报管理员:\n[ERROR]" + err.Error()
+				}
+				AISampleApped(str)
 			}
 		}
 		strSlice = append(strSlice, str)
@@ -332,10 +347,11 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 		}
 		body += str
 	}
-	body += "。"
-	if pp == 1 && np == 1 {
-		AISampleApped(body)
+	if aiContentCount > 0 {
+		head += "（AI:" + strconv.Itoa(aiContentCount) + "）"
 	}
+	head += "：\n"
+	body += "。"
 	// TODO: 重新实现
 	if strutil.Similarity(strSlice[0], strSlice[1], gStrCompareAlgo) > 0.95 {
 		randInt, _ := rand.Int(rand.Reader, big.NewInt(int64(25600)))
@@ -343,23 +359,6 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 			body = "诸事不宜。请谨慎行事。"
 		} else {
 			body = "诸事皆宜。愿好运与你同行。"
-		}
-	} else {
-		if pp == 1 && np == 1 {
-			randInt, _ := rand.Int(rand.Reader, big.NewInt(int64(25600)))
-
-			if AIContentValid() && randInt.Cmp(big.NewInt(12800)) >= 0 {
-				AIContentPop, AIContentName := AIContentPop()
-				if len(AIContentPop) > 0 {
-					head = "今日(" + AIContentName + ")：\n"
-					body = AIContentPop
-					fmt.Println("AI Hit:", body)
-				} else {
-					fmt.Println("AI content NULL")
-				}
-			} else {
-				fmt.Println("AI miss:", randInt.Uint64(), "< 12800")
-			}
 		}
 	}
 	lhl.cache.Push(id, name, head+body)
@@ -599,6 +598,7 @@ func (tr *todayResults) NewRand() {
 	}
 }
 func (c *laohuangliCache) Init() {
+	c.New()
 	db.Read("datas", "cache", c)
 }
 func (c *laohuangliCache) New() {
