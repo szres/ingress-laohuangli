@@ -28,9 +28,11 @@ type laohuangli struct {
 	entriesUser []entry
 	// 频次均衡后的词条
 	entriesBanlanced []entry
-	templates        map[string]laohuangliTemplate
-	cache            laohuangliCache
-	annual           map[string]AnnualSummary
+	// 连续签到
+	userStreak map[int64]streak
+	templates  map[string]laohuangliTemplate
+	cache      laohuangliCache
+	annual     map[string]AnnualSummary
 }
 
 var laoHL laohuangli
@@ -47,10 +49,12 @@ func (lhl *laohuangli) init(db *scribble.Driver) {
 
 	lhl.annual = make(map[string]AnnualSummary)
 	lhl.templates = make(map[string]laohuangliTemplate)
+	lhl.userStreak = make(map[int64]streak)
 
 	lhl.db.Read("datas", "laohuangli", &lhl.entries)
 	lhl.db.Read("datas", "templates", &lhl.templates)
 	lhl.db.Read("datas", "laohuangli-user", &lhl.entriesUser)
+	lhl.db.Read("datas", "streak", &lhl.userStreak)
 
 	annualYear := getAnnualYear()
 	err := lhl.db.Read("annual", fmt.Sprintf("%d", annualYear), &lhl.annual)
@@ -92,6 +96,12 @@ func (lhl *laohuangli) save() {
 		fmt.Println("加权词条保存成功")
 	} else {
 		fmt.Println("加权词条保存失败:" + err.Error())
+	}
+	err = lhl.db.Write("datas", "streak", lhl.userStreak)
+	if err == nil {
+		fmt.Println("用户签到保存成功")
+	} else {
+		fmt.Println("用户签到保存失败:" + err.Error())
 	}
 }
 
@@ -307,7 +317,13 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 		if randInt.Cmp(big.NewInt(95000)) >= 0 {
 			np += 1
 		}
-		head = "今日"
+		streakNow, streakLast := lhl.getStreak(id)
+		if streakLast > streakNow {
+			head = "连续算命" + strconv.Itoa(streakLast) + "天已中断，现在为第" + strconv.Itoa(streakNow) + "天"
+		} else {
+			head = "连续算命第" + strconv.Itoa(streakNow) + "天"
+		}
+
 	}
 	strSlice := make([]string, 0)
 	aiContentCount := 0
@@ -319,7 +335,7 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 		}
 		if str == "" {
 			randInt, _ := rand.Int(rand.Reader, big.NewInt(int64(25600)))
-			if AIContentValid() && randInt.Cmp(big.NewInt(12800)) >= 0 {
+			if AIContentValid() && randInt.Cmp(big.NewInt(15360)) >= 0 {
 				AIContent, _ := AIContentPop()
 				aiContentCount += 1
 				if len(AIContent) > 0 {
@@ -376,6 +392,7 @@ func (lhl *laohuangli) update() {
 			lhl.cache.New()
 			lhl.cache.Save()
 			lhl.createBanlancedEntries()
+			lhl.db.Write("datas", "streak", lhl.userStreak)
 		}
 	}
 }
