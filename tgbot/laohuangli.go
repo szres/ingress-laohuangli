@@ -297,15 +297,15 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 	case 0:
 		pp = 4
 		np = 1
-		head = "作为今日第一位祈求命运之人，洞察到了清晰的命运，今日"
+		head = "作为今日第一位祈求命运之人，洞察到了清晰的命运，"
 	case 1:
 		pp = 3
 		np = 1
-		head = "为今日第二位老黄历用户，祈求的命运已开始模糊，今日"
+		head = "为今日第二位老黄历用户，祈求的命运已开始模糊，"
 	case 12:
 		pp = 1
 		np = 5
-		head = "作为第十三位祈求命运之人，命运的天平将为他倾斜，今日"
+		head = "作为第十三位祈求命运之人，命运的天平将为他倾斜，"
 	default:
 		pp = 1
 		np = 1
@@ -317,14 +317,14 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 		if randInt.Cmp(big.NewInt(95000)) >= 0 {
 			np += 1
 		}
-		streakNow, streakLast := lhl.getStreak(id)
-		if streakLast > streakNow {
-			head = "连续算命" + strconv.Itoa(streakLast) + "天已中断，现在为第" + strconv.Itoa(streakNow) + "天"
-		} else {
-			head = "连续算命第" + strconv.Itoa(streakNow) + "天"
-		}
-
 	}
+	streakNow, streakLast := lhl.getStreak(id)
+	if streakLast > streakNow {
+		head += "连续算命 " + strconv.Itoa(streakLast) + " 天已中断，现在为第 " + strconv.Itoa(streakNow) + " 天"
+	} else {
+		head += "连续算命第 " + strconv.Itoa(streakNow) + " 天"
+	}
+
 	strSlice := make([]string, 0)
 	aiContentCount := 0
 	for i := 0; i < pp+np; i++ {
