@@ -17,12 +17,13 @@ func (lhl *laohuangli) getStreak(user int64) (now int, last int) {
 	last = lhl.userStreak[user].Streak
 
 	if lhl.userStreak[user].Date == today {
-		now = lhl.userStreak[user].Streak
-	}
-	if lhl.userStreak[user].Date == yesterday {
+		now = last
+	} else if lhl.userStreak[user].Date == yesterday {
 		now = lhl.userStreak[user].Streak + 1
-		lhl.userStreak[user] = streak{Date: today, Streak: now}
+	} else {
+		now = 1
 	}
+	lhl.userStreak[user] = streak{Date: today, Streak: now}
 	lhl.db.Write("datas", "streak", lhl.userStreak)
 	return
 }
