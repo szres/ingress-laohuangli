@@ -29,7 +29,7 @@ type laohuangli struct {
 	// 频次均衡后的词条
 	entriesBanlanced []entry
 	// 连续签到
-	userStreak map[int64]streak
+	userStreak map[int64]userstreak
 	templates  map[string]laohuangliTemplate
 	cache      laohuangliCache
 	annual     map[string]AnnualSummary
@@ -49,7 +49,7 @@ func (lhl *laohuangli) init(db *scribble.Driver) {
 
 	lhl.annual = make(map[string]AnnualSummary)
 	lhl.templates = make(map[string]laohuangliTemplate)
-	lhl.userStreak = make(map[int64]streak)
+	lhl.userStreak = make(map[int64]userstreak)
 
 	lhl.db.Read("datas", "laohuangli", &lhl.entries)
 	lhl.db.Read("datas", "templates", &lhl.templates)
@@ -318,12 +318,14 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 			np += 1
 		}
 	}
-	streakNow, streakLast := lhl.getStreak(id)
-	if streakLast > streakNow {
-		head += "连续算命 " + strconv.Itoa(streakLast) + " 天已中断，现在为第 " + strconv.Itoa(streakNow) + " 天"
-	} else {
-		head += "连续算命第 " + strconv.Itoa(streakNow) + " 天"
+	lhl.updateStreak(id)
+	streakWeek, streakDay := lhl.getStreak(id)
+	head += "完成算命streaks " + strconv.Itoa(streakWeek) + " 次"
+	streakDay = streakDay % 7
+	if streakDay == 0 {
+		streakDay = 7
 	}
+	head += "当前 " + strconv.Itoa(streakDay) + "/7"
 
 	strSlice := make([]string, 0)
 	aiContentCount := 0
