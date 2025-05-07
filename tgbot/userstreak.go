@@ -22,16 +22,6 @@ func (lhl *laohuangli) updateStreak(user int64) {
 	all := lhl.userStreak[user].All
 	weeks := lhl.userStreak[user].Weeks
 
-	// temp fix
-	if streak > all {
-		all = streak
-	}
-	if streak >= 7 {
-		weeks = 1
-	}
-	// should be removed before 5.14
-	// temp fix end
-
 	if date == today {
 		return
 	}
