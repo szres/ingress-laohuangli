@@ -39,6 +39,7 @@ type AIInstance struct {
 	Name   string
 	Init   func(*AIInstance)
 	Update func(*AIInstance) error
+	Valid  bool
 }
 
 var AIContentPool []string
@@ -68,24 +69,15 @@ func initAIs() {
 	}
 
 	go func() {
-		ticker := time.NewTicker(30 * time.Second)
-		for range ticker.C {
-			for _, ai := range AIs {
-				if len(AIContentPool) < 5 {
-					ai.Update(ai)
-				}
-			}
-		}
-	}()
-
-	go func() {
 		for {
 			var updated bool
 			if len(AIContentPool) < 5 {
 				for _, ai := range shuffle(AIs) {
-					if err := ai.Update(ai); err == nil {
-						updated = true
-						break
+					if ai.Valid {
+						if err := ai.Update(ai); err == nil {
+							updated = true
+							break
+						}
 					}
 				}
 				if !updated {
@@ -109,10 +101,15 @@ func initGemini(self *AIInstance) {
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
 		fmt.Println("Gemini api key is empty")
+		self.Valid = false
 		return
 	}
 
-	getContentGemini(self)
+	if getContentGemini(self) == nil {
+		self.Valid = true
+	} else {
+		self.Valid = false
+	}
 }
 
 func getContentGemini(self *AIInstance) (err error) {
@@ -153,12 +150,17 @@ func initOpenAI(self *AIInstance) {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
 		fmt.Println("OpenAI api key is empty")
+		self.Valid = false
 		return
 	}
 
 	gptClient = openai.NewClientWithConfig(openai.DefaultConfig(apiKey))
 
-	getContentOpenAI(self)
+	if getContentOpenAI(self) == nil {
+		self.Valid = true
+	} else {
+		self.Valid = false
+	}
 }
 
 func AIContentValid() bool {
