@@ -320,12 +320,12 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 	}
 	lhl.updateStreak(id)
 	streakWeek, streakDay := lhl.getStreak(id)
-	head += "完成算命streaks " + strconv.Itoa(streakWeek) + " 次"
 	streakDay = streakDay % 7
-	if streakDay == 0 {
-		streakDay = 7
+	if streakDay > 0 {
+		head += "第" + strconv.Itoa(streakWeek+1) + " 次算命streak进度 " + strconv.Itoa(streakDay) + "/7"
+	} else {
+		head += "完成了第" + strconv.Itoa(streakWeek) + " 次算命streak🎉"
 	}
-	head += "当前 " + strconv.Itoa(streakDay) + "/7"
 
 	strSlice := make([]string, 0)
 	aiContentCount := 0
