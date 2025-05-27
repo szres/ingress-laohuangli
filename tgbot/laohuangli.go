@@ -322,9 +322,9 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 	streakWeek, streakDay := lhl.getStreak(id)
 	streakDay = streakDay % 7
 	if streakDay > 0 {
-		head += "第" + strconv.Itoa(streakWeek+1) + " 次算命streak进度 " + strconv.Itoa(streakDay) + "/7"
+		head += "第" + strconv.Itoa(streakWeek+1) + "次算命streak进度 " + strconv.Itoa(streakDay) + "/7"
 	} else {
-		head += "完成了第" + strconv.Itoa(streakWeek) + " 次算命streak🎉"
+		head += "完成了第" + strconv.Itoa(streakWeek) + "次算命streak🎉"
 	}
 
 	strSlice := make([]string, 0)
