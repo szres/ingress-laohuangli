@@ -122,7 +122,7 @@ func getContentGemini(self *AIInstance) (err error) {
 	}
 	defer client.Close()
 
-	model := client.GenerativeModel("gemini-2.5-flash-preview-04-17")
+	model := client.GenerativeModel("gemini-2.5-flash-preview-05-20")
 	resp, err := model.GenerateContent(ctx, gemini.Text(getPrompt()))
 	if err != nil {
 		fmt.Println("Error", err)
