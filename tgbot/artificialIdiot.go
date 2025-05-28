@@ -69,6 +69,7 @@ func initAIs() {
 	}
 
 	go func() {
+		var delay time.Duration = 30 * time.Second
 		for {
 			var updated bool
 			if len(AIContentPool) < 5 {
@@ -81,10 +82,18 @@ func initAIs() {
 					}
 				}
 				if !updated {
-					fmt.Println("All AIs failed to update")
+					// HH:MM:SS logging
+					fmt.Printf("All AIs content failed to update at %s, retrying in %s...\n", time.Now().Format("15:04:05"), delay)
+					delay *= 2 // Increase delay by 2 times if all AIs fail
+					if delay > 16*time.Minute {
+						delay = 16 * time.Minute // Cap the delay at 16 minutes
+					}
+				} else {
+					fmt.Println("AI content updated successfully at", time.Now().Format("15:04:05"))
+					delay = 30 * time.Second // Reset delay to 30 seconds after a successful update
 				}
 			}
-			<-time.After(30 * time.Second)
+			<-time.After(delay)
 		}
 	}()
 }
