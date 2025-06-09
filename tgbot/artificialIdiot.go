@@ -124,14 +124,23 @@ func initGemini(self *AIInstance) {
 func getContentGemini(self *AIInstance) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	client, err := gemini.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")))
+	var client *gemini.Client
+	if os.Getenv("GEMINI_BASE_URL") != "" {
+		client, err = gemini.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")), option.WithEndpoint(os.Getenv("GEMINI_BASE_URL")))
+	} else {
+		client, err = gemini.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")))
+	}
 	if err != nil {
 		fmt.Println("Error", err)
 		return
 	}
 	defer client.Close()
-
-	model := client.GenerativeModel("gemini-2.5-flash-preview-05-20")
+	var model *gemini.GenerativeModel
+	if os.Getenv("GEMINI_MODEL") != "" {
+		model = client.GenerativeModel(os.Getenv("GEMINI_MODEL"))
+	} else {
+		model = client.GenerativeModel("gemini-2.5-flash-preview-05-20")
+	}
 	resp, err := model.GenerateContent(ctx, gemini.Text(getPrompt()))
 	if err != nil {
 		fmt.Println("Error", err)
@@ -162,9 +171,11 @@ func initOpenAI(self *AIInstance) {
 		self.Valid = false
 		return
 	}
-
-	gptClient = openai.NewClientWithConfig(openai.DefaultConfig(apiKey))
-
+	config := openai.DefaultConfig(apiKey)
+	if os.Getenv("OPENAI_BASE_URL") != "" {
+		config.BaseURL = os.Getenv("OPENAI_BASE_URL")
+	}
+	gptClient = openai.NewClientWithConfig(config)
 	if getContentOpenAI(self) == nil {
 		self.Valid = true
 	} else {
@@ -200,14 +211,17 @@ func getContentOpenAI(self *AIInstance) (err error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-
+	req := openai.ChatCompletionRequest{
+		MaxTokens: 1024,
+		Model:     openai.GPT4oMini,
+		Messages:  prompt,
+	}
+	if os.Getenv("OPENAI_MODEL") != "" {
+		req.Model = os.Getenv("OPENAI_MODEL")
+	}
 	resp, err := gptClient.CreateChatCompletion(
 		ctx,
-		openai.ChatCompletionRequest{
-			MaxTokens: 1024,
-			Model:     openai.GPT4oMini,
-			Messages:  prompt,
-		},
+		req,
 	)
 	if err != nil {
 		fmt.Println("Error", err)
