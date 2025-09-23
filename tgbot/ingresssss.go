@@ -30,15 +30,6 @@ func ingressStr() string {
 				"带狗狗参加IFS",
 				"不带手机参加IFS",
 				"在IFS现场转生",
-			}
-			randInt, _ := rand.Int(rand.Reader, big.NewInt(int64(len(results))))
-			return results[randInt.Int64()]
-		}
-	}
-	if now.Weekday() == time.Tuesday {
-		// Double AP day
-		if PP(21) {
-			results := []string{
 				"刷AP",
 				"女装刷AP",
 				"嗑APEX刷AP",
@@ -54,12 +45,12 @@ func ingressStr() string {
 		// ISS day
 		if PP(17) {
 			results := []string{
-				"出门做一排任务",
-				"出门做两排任务",
-				"出门做三排任务",
-				"出门做四排任务",
-				"女装出门做一排任务",
-				"不带手机做一排任务",
+				"出门做一个ISS任务",
+				"出门做两个ISS任务",
+				"出门做三个ISS任务",
+				"出门做四个ISS任务",
+				"女装出门做ISS任务",
+				"不带手机做ISS任务",
 			}
 			randInt, _ := rand.Int(rand.Reader, big.NewInt(int64(len(results))))
 			return results[randInt.Int64()]
