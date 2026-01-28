@@ -2,19 +2,20 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
 	"strings"
 	"time"
 
-	gemini "github.com/google/generative-ai-go/genai"
+	"math/rand/v2"
+
 	openai "github.com/sashabaranov/go-openai"
-	"golang.org/x/exp/rand"
-	"google.golang.org/api/option"
 )
 
-var gptClient *openai.Client
+var openaiClient *openai.Client
 var AISamples []string = []string{
 	"拒接领导电话",
 	"翘班去钓鱼",
@@ -52,116 +53,58 @@ func AIContentPush(s string) {
 	}
 }
 
+var aiContext, cancelAI = context.WithCancel(context.Background())
+
 func initAIs() {
 	AIs = make([]*AIInstance, 0)
 	AIs = append(AIs, &AIInstance{
-		Name:   "GPT4oMini",
+		Name:   "OpenAI Like",
 		Init:   initOpenAI,
 		Update: getContentOpenAI,
-	})
-	AIs = append(AIs, &AIInstance{
-		Name:   "Gemini2.5flash",
-		Init:   initGemini,
-		Update: getContentGemini,
 	})
 	for _, ai := range AIs {
 		ai.Init(ai)
 	}
 
-	go func() {
+	go func(ctx context.Context) {
 		var delay time.Duration = 30 * time.Second
 		for {
-			var updated bool
-			if len(AIContentPool) < 5 {
-				for _, ai := range shuffle(AIs) {
-					if ai.Valid {
-						if err := ai.Update(ai); err == nil {
-							updated = true
-							break
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(delay):
+				var updated bool
+				if len(AIContentPool) < 5 {
+					for _, ai := range shuffle(AIs) {
+						if ai.Valid {
+							if err := ai.Update(ai); err == nil {
+								updated = true
+								break
+							}
 						}
 					}
-				}
-				if !updated {
-					// HH:MM:SS logging
-					fmt.Printf("All AIs content failed to update at %s, retrying in %s...\n", time.Now().Format("15:04:05"), delay)
-					delay *= 2 // Increase delay by 2 times if all AIs fail
-					if delay > 16*time.Minute {
-						delay = 16 * time.Minute // Cap the delay at 16 minutes
+					if !updated {
+						// HH:MM:SS logging
+						fmt.Printf("All AIs content failed to update at %s, retrying in %s...\n", time.Now().Format("15:04:05"), delay)
+						delay *= 2 // Increase delay by 2 times if all AIs fail
+						if delay > 16*time.Minute {
+							delay = 16 * time.Minute // Cap the delay at 16 minutes
+						}
+					} else {
+						fmt.Println("AI content updated successfully at", time.Now().Format("15:04:05"))
+						delay = 30 * time.Second // Reset delay to 30 seconds after a successful update
 					}
-				} else {
-					fmt.Println("AI content updated successfully at", time.Now().Format("15:04:05"))
-					delay = 30 * time.Second // Reset delay to 30 seconds after a successful update
 				}
 			}
-			<-time.After(delay)
 		}
-	}()
+	}(aiContext)
 }
 
 func shuffle(arr []*AIInstance) []*AIInstance {
-	rand.Seed(uint64(time.Now().UnixNano()))
 	rand.Shuffle(len(arr), func(i, j int) {
 		arr[i], arr[j] = arr[j], arr[i]
 	})
 	return arr
-}
-
-func initGemini(self *AIInstance) {
-	apiKey := os.Getenv("GEMINI_API_KEY")
-	if apiKey == "" {
-		fmt.Println("Gemini api key is empty")
-		self.Valid = false
-		return
-	}
-
-	if getContentGemini(self) == nil {
-		self.Valid = true
-	} else {
-		self.Valid = false
-	}
-}
-
-func getContentGemini(self *AIInstance) (err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	var client *gemini.Client
-	if os.Getenv("GEMINI_BASE_URL") != "" {
-		client, err = gemini.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")), option.WithEndpoint(os.Getenv("GEMINI_BASE_URL")))
-	} else {
-		client, err = gemini.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")))
-	}
-	if err != nil {
-		fmt.Println("Error", err)
-		return
-	}
-	defer client.Close()
-	var model *gemini.GenerativeModel
-	if os.Getenv("GEMINI_MODEL") != "" {
-		model = client.GenerativeModel(os.Getenv("GEMINI_MODEL"))
-	} else {
-		model = client.GenerativeModel("gemini-2.5-flash-preview-05-20")
-	}
-	resp, err := model.GenerateContent(ctx, gemini.Text(getPrompt()))
-	if err != nil {
-		fmt.Println("Error", err)
-		return
-	}
-	for _, cand := range resp.Candidates {
-		if cand.Content != nil {
-			for _, part := range cand.Content.Parts {
-				lines := strings.Split(fmt.Sprint(part), "\n")
-				re := regexp.MustCompile(`\{宜(.+?)\}`)
-				for _, v := range lines {
-					match := re.FindStringSubmatch(v)
-					if len(match) > 0 {
-						AIContentPush(match[1])
-						fmt.Println(self.Name, "AI result add:", match[1])
-					}
-				}
-			}
-		}
-	}
-	return err
 }
 
 func initOpenAI(self *AIInstance) {
@@ -175,7 +118,7 @@ func initOpenAI(self *AIInstance) {
 	if os.Getenv("OPENAI_BASE_URL") != "" {
 		config.BaseURL = os.Getenv("OPENAI_BASE_URL")
 	}
-	gptClient = openai.NewClientWithConfig(config)
+	openaiClient = openai.NewClientWithConfig(config)
 	if getContentOpenAI(self) == nil {
 		self.Valid = true
 	} else {
@@ -188,7 +131,7 @@ func AIContentValid() bool {
 }
 
 func AIContentPop() (result string) {
-	resultIdx := rand.Intn(len(AIContentPool))
+	resultIdx := rand.IntN(len(AIContentPool))
 	result = AIContentPool[resultIdx]
 	AIContentPool = append(AIContentPool[:resultIdx], AIContentPool[resultIdx+1:]...)
 	fmt.Println("len:", len(AIContentPool), "result:", result)
@@ -205,26 +148,52 @@ func AISampleApped(s string) {
 func getContentOpenAI(self *AIInstance) (err error) {
 	prompt := make([]openai.ChatCompletionMessage, 0)
 	prompt = append(prompt, openai.ChatCompletionMessage{
-		Role:    openai.ChatMessageRoleSystem,
+		Role:    openai.ChatMessageRoleUser,
 		Content: getPrompt(),
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	req := openai.ChatCompletionRequest{
-		MaxTokens: 1024,
-		Model:     openai.GPT4oMini,
-		Messages:  prompt,
+		MaxTokens:   4096,
+		Model:       openai.GPT4oMini,
+		Messages:    prompt,
+		Stream:      false,
+		Temperature: 0.8,
 	}
 	if os.Getenv("OPENAI_MODEL") != "" {
 		req.Model = os.Getenv("OPENAI_MODEL")
 	}
-	resp, err := gptClient.CreateChatCompletion(
+
+	reqJSON, _ := json.MarshalIndent(req, "", "  ")
+	fmt.Printf("即将发送的 JSON Payload:\n%s\n", string(reqJSON))
+
+	resp, err := openaiClient.CreateChatCompletion(
 		ctx,
 		req,
 	)
 	if err != nil {
-		fmt.Println("Error", err)
+		e := &openai.APIError{}
+		if errors.As(err, &e) {
+			switch e.HTTPStatusCode {
+			case 400:
+				fmt.Println("=== 400 Bad Request 详情 ===")
+				fmt.Printf("错误代码 (Code): %v\n", e.Code)
+				fmt.Printf("错误类型 (Type): %s\n", e.Type)
+				fmt.Printf("错误信息 (Message): %s\n", e.Message)
+
+				if e.Param != nil {
+					// 如果指针不为空，则解引用打印具体值
+					fmt.Printf("相关参数 (Param): %s\n", *e.Param)
+				} else {
+					fmt.Printf("相关参数 (Param): <null>\n")
+				}
+			default:
+				fmt.Printf("API Error: %v\n", e)
+			}
+		} else {
+			fmt.Printf("Generic Error: %v\n", err)
+		}
 		return
 	}
 

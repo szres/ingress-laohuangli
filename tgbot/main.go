@@ -11,7 +11,6 @@ import (
 	"time"
 	_ "time/tzdata"
 
-	kuma "github.com/Nigh/kuma-push"
 	"github.com/adrg/strutil/metrics"
 	scribble "github.com/nanobox-io/golang-scribble"
 	tele "gopkg.in/telebot.v3"
@@ -51,35 +50,35 @@ var (
 
 var db *scribble.Driver
 
-func init() {
+func SetupApp() {
 	db, _ = scribble.New("../db", nil)
-
 	laoHL.init(db)
 	laoHL.start()
 
-	db.Read("test", "env", &testEnv)
-	if testEnv.Token != "" {
-		gToken = testEnv.Token
-		gAdminID, _ = strconv.ParseInt(testEnv.AdminID, 10, 64)
-		gKumaPushURL = testEnv.KumaURL
-	} else {
+	// 优先读取环境变量，或者你的 testEnv 逻辑
+	if os.Getenv("BOT_TOKEN") != "" {
 		gToken = os.Getenv("BOT_TOKEN")
 		gAdminID, _ = strconv.ParseInt(os.Getenv("BOT_ADMIN_ID"), 10, 64)
 		gKumaPushURL = os.Getenv("KUMA_PUSH_URL")
+	} else {
+		db.Read("test", "env", &testEnv)
+		gToken = testEnv.Token
+		// ... 其他 testEnv 逻辑
 	}
+
 	gStrCompareAlgo = metrics.NewJaro()
 	gStrCompareAlgo.CaseSensitive = false
-	k := kuma.New(gKumaPushURL)
-	k.Start()
-	initAIs()
 
-	go func() {
-		http.Handle("/", http.FileServer(http.Dir("../db/datas")))
-		err := http.ListenAndServe(":80", nil)
-		if err != nil {
-			panic(err)
-		}
-	}()
+	// 初始化 AI
+	initAIs()
+}
+
+func StartFileServer() {
+	http.Handle("/", http.FileServer(http.Dir("../db/datas")))
+	err := http.ListenAndServe(":80", nil)
+	if err != nil {
+		panic(err)
+	}
 }
 
 var b *tele.Bot
@@ -92,6 +91,8 @@ func fullName(u *tele.User) string {
 }
 
 func main() {
+	SetupApp()
+	NominationInit()
 	fmt.Println("老黄历启动！")
 	pref := tele.Settings{
 		Token:  gToken,
@@ -150,6 +151,7 @@ func main() {
 		})
 	})
 
+	go StartFileServer()
 	fmt.Println("上线！")
 	go b.Start()
 
