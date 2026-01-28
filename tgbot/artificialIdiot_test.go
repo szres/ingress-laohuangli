@@ -1,12 +1,13 @@
 package main
 
 import (
-	"os"
 	"testing"
 )
 
 func TestGenarate(t *testing.T) {
-	os.Setenv("GEMINI_API_KEY", "test")
-	os.Setenv("OPENAI_API_KEY", "test")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	t.Setenv("OPENAI_BASE_URL", "")
+	SetupApp()
 	initAIs()
 }

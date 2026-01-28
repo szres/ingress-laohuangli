@@ -178,7 +178,7 @@ func (ns *nominationSlice) update() {
 	}
 }
 
-func init() {
+func NominationInit() {
 	nominations.init()
 	go nominations.update()
 }
