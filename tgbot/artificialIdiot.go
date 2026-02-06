@@ -31,25 +31,25 @@ var AISamples []string = []string{
 var promptDefault = "你是一个算命机器人，会随机给出今天的幸运物或者行为词条，词条范围包含但不限于与[今天的日期]、[现在的时间]相关的活动、[Ingress]游戏中的行为、衣服穿搭、发型发色、交通工具、饮食搭配、经典网络迷因、流行搞笑梗等等各种有趣的东西；其中，Ingress中的[名词]均使用英文。词条必须简短不含逗号，但是需要搞笑有趣、幽默讽刺。当今天是节日时，生成词条尽量与节日相关，生成词条均以大括号{}括住，请参考后面的生成词条示例，再生成13条词条。\n"
 var promptEnd = "请仅回答生成的词条，每个词条一行。"
 
-func todayChineseDateTime() string {
-	t := time.Now()
+func todayChineseDateTime(t time.Time) string {
 	return fmt.Sprintf("%d年%d月%d日%d点", t.Year(), t.Month(), t.Day(), t.Hour())
 }
 
 type AIInstance struct {
 	Name   string
 	Init   func(*AIInstance)
-	Update func(*AIInstance) error
+	Update func(*AIInstance, time.Time, *[]string) error
 	Valid  bool
 }
 
 var AIContentPool []string
+var AINextHourPool []string
 var AIs []*AIInstance
 
-func AIContentPush(s string) {
-	AIContentPool = append(AIContentPool, s)
-	for len(AIContentPool) > 15 {
-		AIContentPool = AIContentPool[1:]
+func AIContentPush(pool *[]string, s string) {
+	*pool = append(*pool, s)
+	for len(*pool) > 15 {
+		*pool = (*pool)[1:]
 	}
 }
 
@@ -67,32 +67,83 @@ func initAIs() {
 	}
 
 	go func(ctx context.Context) {
-		var delay time.Duration = 30 * time.Second
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+
+		lastHour := time.Now().Hour()
+		failureDelay := 30 * time.Second
+		var nextRegularUpdate time.Time
+
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(delay):
-				var updated bool
-				if len(AIContentPool) < 5 {
+			case <-ticker.C:
+				now := time.Now()
+				currentHour := now.Hour()
+				currentMinute := now.Minute()
+
+				// 1. 整点切换逻辑
+				if currentHour != lastHour {
+					fmt.Printf("New hour detected: %d (was %d). Switching AIContentPool.\n", currentHour, lastHour)
+					if len(AINextHourPool) > 0 {
+						AIContentPool = AINextHourPool
+						AINextHourPool = make([]string, 0)
+					} else {
+						// 如果预取失败了，整点至少清空旧的（过期的）
+						AIContentPool = make([]string, 0)
+					}
+					lastHour = currentHour
+				}
+
+				// 2. 触发决策逻辑
+				var targetPool *[]string
+				var targetTime time.Time
+				isPrefetch := false
+
+				if currentMinute == 59 {
+					// 59分进入预取模式
+					if len(AINextHourPool) < 5 {
+						targetPool = &AINextHourPool
+						targetTime = now.Add(time.Hour)
+						isPrefetch = true
+					}
+				} else {
+					// 常规模式：池不满 且 预取池为空 且 过了延迟时间
+					if len(AIContentPool) < 5 && len(AINextHourPool) == 0 && now.After(nextRegularUpdate) {
+						targetPool = &AIContentPool
+						targetTime = now
+					}
+				}
+
+				// 3. 执行更新
+				if targetPool != nil {
+					var success bool
 					for _, ai := range shuffle(AIs) {
 						if ai.Valid {
-							if err := ai.Update(ai); err == nil {
-								updated = true
+							if err := ai.Update(ai, targetTime, targetPool); err == nil {
+								success = true
 								break
 							}
 						}
 					}
-					if !updated {
-						// HH:MM:SS logging
-						fmt.Printf("All AIs content failed to update at %s, retrying in %s...\n", time.Now().Format("15:04:05"), delay)
-						delay *= 2 // Increase delay by 2 times if all AIs fail
-						if delay > 16*time.Minute {
-							delay = 16 * time.Minute // Cap the delay at 16 minutes
-						}
+
+					if success {
+						fmt.Printf("AI content updated successfully (Prefetch: %v) at %s\n", isPrefetch, now.Format("15:04:05"))
+						failureDelay = 30 * time.Second
+						nextRegularUpdate = time.Time{} // 重置延迟
 					} else {
-						fmt.Println("AI content updated successfully at", time.Now().Format("15:04:05"))
-						delay = 30 * time.Second // Reset delay to 30 seconds after a successful update
+						if !isPrefetch {
+							// 只有常规模式失败才增加延迟
+							fmt.Printf("Regular AI update failed at %s, retrying after %s\n", now.Format("15:04:05"), failureDelay)
+							nextRegularUpdate = now.Add(failureDelay)
+							failureDelay *= 2
+							if failureDelay > 16*time.Minute {
+								failureDelay = 16 * time.Minute
+							}
+						} else {
+							fmt.Printf("Prefetch AI update failed at %s, will retry soon\n", now.Format("15:04:05"))
+						}
 					}
 				}
 			}
@@ -119,7 +170,7 @@ func initOpenAI(self *AIInstance) {
 		config.BaseURL = os.Getenv("OPENAI_BASE_URL")
 	}
 	openaiClient = openai.NewClientWithConfig(config)
-	if getContentOpenAI(self) == nil {
+	if getContentOpenAI(self, time.Now(), &AIContentPool) == nil {
 		self.Valid = true
 	} else {
 		self.Valid = false
@@ -145,11 +196,11 @@ func AISampleApped(s string) {
 	}
 }
 
-func getContentOpenAI(self *AIInstance) (err error) {
+func getContentOpenAI(self *AIInstance, t time.Time, pool *[]string) (err error) {
 	prompt := make([]openai.ChatCompletionMessage, 0)
 	prompt = append(prompt, openai.ChatCompletionMessage{
 		Role:    openai.ChatMessageRoleUser,
-		Content: getPrompt(),
+		Content: getPrompt(t),
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -202,20 +253,20 @@ func getContentOpenAI(self *AIInstance) (err error) {
 	for _, v := range lines {
 		match := re.FindStringSubmatch(v)
 		if len(match) > 0 {
-			AIContentPush(match[1])
-			fmt.Println(self.Name, "AI result add:", match[1])
+			AIContentPush(pool, match[1])
+			fmt.Println(self.Name, "AI result add:", match[1], "to pool size:", len(*pool))
 		}
 	}
 	return err
 }
 
-func getPrompt() string {
+func getPrompt(t time.Time) string {
 	sample := ""
 	for _, v := range AISamples {
 		sample += "{宜" + v + "} "
 	}
 	fmt.Println("generate AI result with:\n", sample)
 
-	p := promptDefault + sample + "\n现在是" + todayChineseDateTime() + "，" + promptEnd
+	p := promptDefault + sample + "\n现在是" + todayChineseDateTime(t) + "，" + promptEnd
 	return p
 }
