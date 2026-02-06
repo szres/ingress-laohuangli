@@ -28,7 +28,7 @@ var AISamples []string = []string{
 	"胡萝卜玉米猪骨汤",
 }
 
-var promptDefault = "你是一个算命机器人，会随机给出今天的幸运物或者行为词条，词条范围包含但不限于与[今天的日期]、[现在的时间]相关的活动、[Ingress]游戏中的行为、衣服穿搭、发型发色、交通工具、饮食搭配、经典网络迷因、流行搞笑梗等等各种有趣的东西；其中，Ingress中的[名词]均使用英文。词条必须简短不含逗号，但是需要搞笑有趣、幽默讽刺。当今天是节日时，生成词条尽量与节日相关，生成词条均以大括号{}括住，请参考后面的生成词条示例，再生成13条词条。\n"
+var promptDefault = "你是一个算命机器人，会随机给出一些老黄历词条，类似：[宜xxxxxxx][忌xxxxxxx]，词条范围包含但不限于与[今天的日期]、[现在的时间]相关的活动、[Ingress]游戏中的行为、衣服穿搭、发型发色、交通工具、饮食搭配、经典网络迷因、流行搞笑梗等等各种有趣的东西；其中，Ingress中的[名词]均使用英文。词条必须简短不含逗号，但是需要搞笑有趣、幽默讽刺。当今天是节日时，生成词条尽量与节日相关，生成词条不含“宜”或“忌”的前缀，但是需要保证词条加上“宜”或“忌”的前缀时都意思通顺，生成的词条均以大括号{}括住，请参考后面的生成词条示例，再生成13条词条。\n"
 var promptEnd = "请仅回答生成的词条，每个词条一行。"
 
 func GetChineseWeekday(t time.Time) string {
@@ -254,7 +254,7 @@ func getContentOpenAI(self *AIInstance, t time.Time, pool *[]string) (err error)
 	}
 
 	lines := strings.Split(resp.Choices[0].Message.Content, "\n")
-	re := regexp.MustCompile(`\{宜(.+?)\}`)
+	re := regexp.MustCompile(`\{(.+?)\}`)
 	for _, v := range lines {
 		match := re.FindStringSubmatch(v)
 		if len(match) > 0 {
@@ -268,7 +268,7 @@ func getContentOpenAI(self *AIInstance, t time.Time, pool *[]string) (err error)
 func getPrompt(t time.Time) string {
 	sample := ""
 	for _, v := range AISamples {
-		sample += "{宜" + v + "} "
+		sample += "{" + v + "} "
 	}
 	fmt.Println("generate AI result with:\n", sample)
 
