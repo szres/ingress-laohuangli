@@ -31,8 +31,13 @@ var AISamples []string = []string{
 var promptDefault = "你是一个算命机器人，会随机给出今天的幸运物或者行为词条，词条范围包含但不限于与[今天的日期]、[现在的时间]相关的活动、[Ingress]游戏中的行为、衣服穿搭、发型发色、交通工具、饮食搭配、经典网络迷因、流行搞笑梗等等各种有趣的东西；其中，Ingress中的[名词]均使用英文。词条必须简短不含逗号，但是需要搞笑有趣、幽默讽刺。当今天是节日时，生成词条尽量与节日相关，生成词条均以大括号{}括住，请参考后面的生成词条示例，再生成13条词条。\n"
 var promptEnd = "请仅回答生成的词条，每个词条一行。"
 
+func GetChineseWeekday(t time.Time) string {
+	// 数组下标 0-6 分别对应周日到周六
+	weekdays := []string{"星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"}
+	return weekdays[t.Weekday()]
+}
 func todayChineseDateTime(t time.Time) string {
-	return fmt.Sprintf("%d年%d月%d日%d点", t.Year(), t.Month(), t.Day(), t.Hour())
+	return fmt.Sprintf("%d年%d月%d日%s%d点", t.Year(), t.Month(), t.Day(), GetChineseWeekday(t), t.Hour())
 }
 
 type AIInstance struct {
@@ -48,7 +53,7 @@ var AIs []*AIInstance
 
 func AIContentPush(pool *[]string, s string) {
 	*pool = append(*pool, s)
-	for len(*pool) > 15 {
+	for len(*pool) > 20 {
 		*pool = (*pool)[1:]
 	}
 }
