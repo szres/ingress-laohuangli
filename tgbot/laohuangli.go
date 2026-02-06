@@ -340,7 +340,7 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 		}
 		if str == "" {
 			randInt, _ := rand.Int(rand.Reader, big.NewInt(int64(25600)))
-			if AIContentValid() && randInt.Cmp(big.NewInt(15360)) >= 0 {
+			if AIContentValid() && randInt.Cmp(big.NewInt(14360)) >= 0 {
 				AIContent := AIContentPop()
 				aiContentCount += 1
 				if len(AIContent) > 0 {
