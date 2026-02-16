@@ -211,11 +211,9 @@ func getContentOpenAI(self *AIInstance, t time.Time, pool *[]string) (err error)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	req := openai.ChatCompletionRequest{
-		MaxTokens:   4096,
-		Model:       openai.GPT4oMini,
-		Messages:    prompt,
-		Stream:      false,
-		Temperature: 0.8,
+		Model:    openai.GPT4oMini,
+		Messages: prompt,
+		Stream:   false,
 	}
 	if os.Getenv("OPENAI_MODEL") != "" {
 		req.Model = os.Getenv("OPENAI_MODEL")
