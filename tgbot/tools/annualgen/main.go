@@ -39,7 +39,6 @@ type AnnualSummary struct {
 type AnnualUserStats struct {
 	ID           int64
 	Name         string
-	TotalCount   int
 	AICount      int
 	ActiveDays   int
 	FirstDate    string
@@ -51,9 +50,9 @@ type AnnualUserStats struct {
 
 type SummaryRequest struct {
 	Name        string   `json:"name"`
-	TotalCount  int      `json:"total_count"`
-	AICount     int      `json:"ai_count"`
+	TotalDays   int      `json:"total_days"`
 	ActiveDays  int      `json:"active_days"`
+	AICount     int      `json:"ai_count"`
 	FirstDate   string   `json:"first_date"`
 	LastDate    string   `json:"last_date"`
 	RankPercent string   `json:"rank_percent"`
@@ -169,7 +168,6 @@ func buildAnnualSummary(db *scribble.Driver, dbPath string, outPath string, year
 	}
 
 	statsMap := make(map[int64]*AnnualUserStats)
-	activeDays := make(map[int64]map[string]struct{})
 	yearlyDates := make([]string, 0)
 	for _, f := range files {
 		if f.IsDir() || !strings.HasSuffix(f.Name(), ".json") {
@@ -185,15 +183,10 @@ func buildAnnualSummary(db *scribble.Driver, dbPath string, outPath string, year
 			return nil, nil, fmt.Errorf("读取 history/%s 失败: %w", dateStr, err)
 		}
 		for id, result := range cache.Caches {
-			stat := getOrInitStats(statsMap, activeDays, id, result.Name)
-			stat.TotalCount++
+			stat := getOrInitStats(statsMap, id, result.Name)
+			stat.ActiveDays++
 			aiCount := countAI(result.Result)
 			stat.AICount += aiCount
-			if cache.Date != "" {
-				addActiveDay(activeDays, id, cache.Date)
-			} else {
-				addActiveDay(activeDays, id, dateStr)
-			}
 			updateDateRange(stat, dateStr)
 			updateQuotes(stat, result.Result)
 		}
@@ -201,11 +194,11 @@ func buildAnnualSummary(db *scribble.Driver, dbPath string, outPath string, year
 
 	stats := make([]AnnualUserStats, 0, len(statsMap))
 	for _, stat := range statsMap {
-		stat.ActiveDays = len(activeDays[stat.ID])
 		stat.Quotes = pickTopQuotes(stat.Quotes, maxCandidates)
 		stats = append(stats, *stat)
 	}
-	applyRank(stats)
+	applyRank(stats, threshold)
+	activeDaysTotal := len(yearlyDates)
 
 	fallbackQuotes, err := loadFallbacks(fallbackPath)
 	if err != nil {
@@ -213,19 +206,32 @@ func buildAnnualSummary(db *scribble.Driver, dbPath string, outPath string, year
 	}
 
 	sort.Slice(stats, func(i, j int) bool {
-		if stats[i].TotalCount == stats[j].TotalCount {
+		if stats[i].ActiveDays == stats[j].ActiveDays {
 			return stats[i].ID < stats[j].ID
 		}
-		return stats[i].TotalCount > stats[j].TotalCount
+		return stats[i].ActiveDays > stats[j].ActiveDays
 	})
+	eligibleCount := 0
+	for _, stat := range stats {
+		if stat.ActiveDays > threshold {
+			eligibleCount++
+		}
+	}
+	processedEligible := 0
 	for _, stat := range stats {
 		key := strconv.FormatInt(stat.ID, 10)
-		if _, exists := annual[key]; exists {
-			continue
+		if stat.ActiveDays > threshold {
+			if _, exists := annual[key]; exists {
+				processedEligible++
+				fmt.Printf("Progress: %d/%d/%d\n", processedEligible, eligibleCount, len(stats))
+				continue
+			}
 		}
 		content := ""
-		if stat.TotalCount > threshold {
-			summary, err := llm.GenerateSummary(buildSummaryRequest(stat), stat.Quotes)
+		if stat.ActiveDays > threshold {
+			processedEligible++
+			fmt.Printf("Progress: %d/%d/%d\n", processedEligible, eligibleCount, len(stats))
+			summary, err := llm.GenerateSummary(buildSummaryRequest(stat, activeDaysTotal), stat.Quotes)
 			if err != nil {
 				content = randomFallback(fallbackQuotes)
 			} else {
@@ -248,19 +254,11 @@ func buildAnnualSummary(db *scribble.Driver, dbPath string, outPath string, year
 	return annual, stats, nil
 }
 
-func getOrInitStats(stats map[int64]*AnnualUserStats, activeDays map[int64]map[string]struct{}, id int64, name string) *AnnualUserStats {
+func getOrInitStats(stats map[int64]*AnnualUserStats, id int64, name string) *AnnualUserStats {
 	if _, ok := stats[id]; !ok {
 		stats[id] = &AnnualUserStats{ID: id, Name: name, Quotes: make([]string, 0)}
-		activeDays[id] = make(map[string]struct{})
 	}
 	return stats[id]
-}
-
-func addActiveDay(activeDays map[int64]map[string]struct{}, id int64, date string) {
-	if _, ok := activeDays[id]; !ok {
-		activeDays[id] = make(map[string]struct{})
-	}
-	activeDays[id][date] = struct{}{}
 }
 
 func updateDateRange(stat *AnnualUserStats, dateStr string) {
@@ -335,14 +333,24 @@ func pickTopQuotes(quotes []string, limit int) []string {
 	return unique
 }
 
-func applyRank(stats []AnnualUserStats) {
+func applyRank(stats []AnnualUserStats, threshold int) {
 	if len(stats) == 0 {
 		return
 	}
-	sorted := make([]AnnualUserStats, len(stats))
-	copy(sorted, stats)
+	sorted := make([]AnnualUserStats, 0, len(stats))
+	for _, stat := range stats {
+		if stat.ActiveDays > threshold {
+			sorted = append(sorted, stat)
+		}
+	}
+	if len(sorted) == 0 {
+		for i := range stats {
+			stats[i].RankPercent = ""
+		}
+		return
+	}
 	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].TotalCount > sorted[j].TotalCount
+		return sorted[i].ActiveDays > sorted[j].ActiveDays
 	})
 	total := float64(len(sorted))
 	rankMap := make(map[int64]string, len(sorted))
@@ -359,12 +367,12 @@ func applyRank(stats []AnnualUserStats) {
 	}
 }
 
-func buildSummaryRequest(stat AnnualUserStats) SummaryRequest {
+func buildSummaryRequest(stat AnnualUserStats, totalDays int) SummaryRequest {
 	return SummaryRequest{
 		Name:        stat.Name,
-		TotalCount:  stat.TotalCount,
-		AICount:     stat.AICount,
+		TotalDays:   totalDays,
 		ActiveDays:  stat.ActiveDays,
+		AICount:     stat.AICount,
 		FirstDate:   stat.FirstDate,
 		LastDate:    stat.LastDate,
 		RankPercent: stat.RankPercent,
@@ -374,7 +382,7 @@ func buildSummaryRequest(stat AnnualUserStats) SummaryRequest {
 
 func (llm *LLMClient) GenerateSummary(req SummaryRequest, candidates []string) (string, error) {
 	payload, _ := json.MarshalIndent(req, "", "  ")
-	prompt := "你是Ingress老黄历年终总结的写手，请根据以下用户数据，写一段80-160字的中文年终总结。风格幽默、有点损但友好，允许引用候选语句中的梗。请至少引用或轻微改写1条候选语句，候选语句涉及Ingress相关名词请保持英文。不要输出列表或JSON，只输出总结正文。\n\n用户数据:\n" + string(payload)
+	prompt := "你是Ingress老黄历年终总结的写手，请根据以下用户数据，写一段100-200字的中文年终总结。风格幽默、有点损但友好，允许引用候选语句中的梗。请至少引用或轻微改写1条候选语句，候选语句涉及Ingress相关名词请保持英文。不要输出列表或JSON，只输出总结正文。\n\n用户数据:\n" + string(payload)
 	if len(candidates) == 0 {
 		prompt += "\n候选语句为空，请自己发挥但仍保持Ingress玩家语境。"
 	}
@@ -401,7 +409,7 @@ func generateFallbacks(llm *LLMClient, outputPath string, samples []string) erro
 			sampleText += fmt.Sprintf("%d) %s\n", i+1, samples[i])
 		}
 	}
-	prompt := "你是Ingress老黄历年终总结的写手，请生成80条面向算命次数不足用户的短句，每条30-60字。语气幽默、略带调侃但友好，尽量使用Ingress玩家语境。不要编号，不要空行，每行一条。"
+	prompt := "你是Ingress老黄历年终总结的写手，请生成40条面向算命次数不足用户的短句，每条40-80字。语气幽默、略带调侃但友好，尽量使用Ingress玩家语境。不要编号，不要空行，每行一条。"
 	if sampleText != "" {
 		prompt += "\n以下是参考示例，请保持风格一致：\n" + sampleText
 	}
