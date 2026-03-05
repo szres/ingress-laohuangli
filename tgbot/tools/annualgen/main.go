@@ -61,9 +61,7 @@ type SummaryRequest struct {
 }
 
 type LLMConfig struct {
-	Model       string
-	Temperature float32
-	MaxTokens   int
+	Model string
 }
 
 type LLMClient struct {
@@ -153,9 +151,7 @@ func newLLMClient() (*LLMClient, error) {
 	return &LLMClient{
 		client: openai.NewClientWithConfig(config),
 		cfg: LLMConfig{
-			Model:       model,
-			Temperature: 0.8,
-			MaxTokens:   2048,
+			Model: model,
 		},
 	}, nil
 }
@@ -385,9 +381,7 @@ func (llm *LLMClient) GenerateSummary(req SummaryRequest, candidates []string) (
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	resp, err := llm.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
-		Model:       llm.cfg.Model,
-		MaxTokens:   llm.cfg.MaxTokens,
-		Temperature: llm.cfg.Temperature,
+		Model: llm.cfg.Model,
 		Messages: []openai.ChatCompletionMessage{{
 			Role:    openai.ChatMessageRoleUser,
 			Content: prompt,
@@ -414,9 +408,7 @@ func generateFallbacks(llm *LLMClient, outputPath string, samples []string) erro
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 	resp, err := llm.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
-		Model:       llm.cfg.Model,
-		MaxTokens:   1200,
-		Temperature: 0.9,
+		Model: llm.cfg.Model,
 		Messages: []openai.ChatCompletionMessage{{
 			Role:    openai.ChatMessageRoleUser,
 			Content: prompt,
