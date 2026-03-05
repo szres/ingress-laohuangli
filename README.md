@@ -51,6 +51,26 @@ db/
     └── $date.json            #历史记录
 ```
 
+## 年终总结生成
+
+使用离线工具生成年度总结与 fallback 文案（需要设置 `OPENAI_API_KEY`）：
+
+```shell
+# 生成 fallback 文案（建议先做一次）
+cd tgbot
+go run ./tools/annualgen -year=2024 -generate-fallback -db ../db -fallback ../db/annual/fallback.json
+
+# 生成年度总结（默认读取 fallback.json，算命次数>30 用 LLM，总结候选语句上限30）
+go run ./tools/annualgen -year=2024 -db ../db -fallback ../db/annual/fallback.json
+```
+
+可选参数：
+
+- `-threshold=30`：进入 LLM 总结的最小次数
+- `-candidates=30`：每人候选语句数量上限
+- `-out=路径`：指定输出文件
+- `-dry-run`：只统计不写文件
+
 #### 词条结构
 
 ```json
