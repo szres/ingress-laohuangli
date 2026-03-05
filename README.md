@@ -23,6 +23,7 @@
    - `BOT_ADMIN_ID`: 机器人管理员的Telegram ID，配置为管理员的ID可以使用更多命令 **[可留空]**
    - `KUMA_PUSH_URL`: 使用 [kuma-push](https://github.com/Nigh/kuma-push) 驱动的 [uptime-Kuma](https://github.com/louislam/uptime-kuma "uptimeKuma") 监控服务的推送地址，不带参数 **[可留空]**
    - `WEB_DOMAIN`: 老黄历网页的托管地址 **[可留空]**
+   - `VALID_ANNUAL`: 年终总结展示年份（例如 2024） **[可留空]**
 2. 根据需要运行下面的命令
 
 ```shell

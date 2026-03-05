@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"math/big"
+	"os"
 	"slices"
 	"sort"
 	"strconv"
@@ -646,14 +647,12 @@ func (c *laohuangliCache) Push(id int64, name string, content string) {
 }
 
 func getAnnualYear() int {
-	now := time.Now()
-	currentYear := now.Year()
-	startDate := time.Date(currentYear, time.November, 20, 0, 0, 0, 0, time.Local)
-	endDate := time.Date(currentYear, time.January, 15, 23, 59, 59, 0, time.Local)
-	if now.After(startDate) {
-		return currentYear
-	} else if now.Before(endDate) {
-		return currentYear - 1
+	if value := os.Getenv("VALID_ANNUAL"); value != "" {
+		year, err := strconv.Atoi(value)
+		if err != nil {
+			return 0
+		}
+		return year
 	}
 	return 0
 }
