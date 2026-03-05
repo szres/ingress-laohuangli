@@ -16,3 +16,6 @@ upgrade:
 
 clean:
 	docker compose down -v --rmi all
+
+backup:
+	tar -czf "db-$(date +%F).tar.gz" db
