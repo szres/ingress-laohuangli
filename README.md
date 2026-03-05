@@ -56,6 +56,11 @@ db/
 使用离线工具生成年度总结与 fallback 文案（需要设置 `OPENAI_API_KEY`）：
 
 ```shell
+# 载入 .env 环境变量
+set -a
+source .env
+set +a
+
 # 生成 fallback 文案（建议先做一次）
 cd tgbot
 go run ./tools/annualgen -year=2024 -generate-fallback -db ../db -fallback ../db/annual/fallback.json

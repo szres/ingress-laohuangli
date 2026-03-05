@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	scribble "github.com/nanobox-io/golang-scribble"
 	openai "github.com/sashabaranov/go-openai"
@@ -107,14 +108,15 @@ func main() {
 		if *fallbackPath == "" {
 			*fallbackPath = filepath.Join(*dbPath, "annual", "fallback.json")
 		}
-		if err := generateFallbacks(llmClient, *fallbackPath); err != nil {
+		existingFallbacks, _ := loadFallbacks("")
+		if err := generateFallbacks(llmClient, *fallbackPath, existingFallbacks); err != nil {
 			exitWithError(err)
 		}
 		fmt.Printf("fallback 文案已生成: %s\n", *fallbackPath)
 		return
 	}
 
-	annual, stats, err := buildAnnualSummary(db, *dbPath, *year, *threshold, *maxCandidates, llmClient, *fallbackPath)
+	annual, stats, err := buildAnnualSummary(db, *dbPath, *outPath, *year, *threshold, *maxCandidates, llmClient, *fallbackPath)
 	if err != nil {
 		exitWithError(err)
 	}
@@ -153,16 +155,21 @@ func newLLMClient() (*LLMClient, error) {
 		cfg: LLMConfig{
 			Model:       model,
 			Temperature: 0.8,
-			MaxTokens:   700,
+			MaxTokens:   2048,
 		},
 	}, nil
 }
 
-func buildAnnualSummary(db *scribble.Driver, dbPath string, year int, threshold int, maxCandidates int, llm *LLMClient, fallbackPath string) (map[string]AnnualSummary, []AnnualUserStats, error) {
+func buildAnnualSummary(db *scribble.Driver, dbPath string, outPath string, year int, threshold int, maxCandidates int, llm *LLMClient, fallbackPath string) (map[string]AnnualSummary, []AnnualUserStats, error) {
 	historyDir := filepath.Join(dbPath, "history")
 	files, err := os.ReadDir(historyDir)
 	if err != nil {
 		return nil, nil, fmt.Errorf("读取 history 目录失败: %w", err)
+	}
+
+	annual := make(map[string]AnnualSummary)
+	if existing, err := loadAnnualFile(outPath); err == nil {
+		annual = existing
 	}
 
 	statsMap := make(map[int64]*AnnualUserStats)
@@ -209,7 +216,6 @@ func buildAnnualSummary(db *scribble.Driver, dbPath string, year int, threshold 
 		return nil, nil, err
 	}
 
-	annual := make(map[string]AnnualSummary)
 	sort.Slice(stats, func(i, j int) bool {
 		if stats[i].TotalCount == stats[j].TotalCount {
 			return stats[i].ID < stats[j].ID
@@ -217,6 +223,10 @@ func buildAnnualSummary(db *scribble.Driver, dbPath string, year int, threshold 
 		return stats[i].TotalCount > stats[j].TotalCount
 	})
 	for _, stat := range stats {
+		key := strconv.FormatInt(stat.ID, 10)
+		if _, exists := annual[key]; exists {
+			continue
+		}
 		content := ""
 		if stat.TotalCount > threshold {
 			summary, err := llm.GenerateSummary(buildSummaryRequest(stat), stat.Quotes)
@@ -228,9 +238,12 @@ func buildAnnualSummary(db *scribble.Driver, dbPath string, year int, threshold 
 		} else {
 			content = randomFallback(fallbackQuotes)
 		}
-		annual[strconv.FormatInt(stat.ID, 10)] = AnnualSummary{
+		annual[key] = AnnualSummary{
 			Name:    stat.Name,
 			Content: content,
+		}
+		if err := writeJSON(outPath, annual); err != nil {
+			return nil, nil, fmt.Errorf("写入断点文件失败: %w", err)
 		}
 	}
 	if len(yearlyDates) == 0 {
@@ -295,14 +308,7 @@ func updateQuotes(stat *AnnualUserStats, result string) {
 func pickTopQuotes(quotes []string, limit int) []string {
 	scored := make([]QuoteCandidate, 0, len(quotes))
 	for _, q := range quotes {
-		score := len([]rune(q))
-		score += strings.Count(q, "宜") + strings.Count(q, "忌")
-		if strings.Contains(q, "Ingress") || strings.Contains(q, "Portal") {
-			score += 6
-		}
-		if strings.Contains(q, "Resonator") || strings.Contains(q, "XMP") || strings.Contains(q, "Glyph") {
-			score += 4
-		}
+		score := quoteScore(q)
 		scored = append(scored, QuoteCandidate{Text: q, Score: score})
 	}
 	sort.Slice(scored, func(i, j int) bool {
@@ -314,11 +320,12 @@ func pickTopQuotes(quotes []string, limit int) []string {
 	unique := make([]string, 0, len(scored))
 	seen := make(map[string]struct{})
 	for _, c := range scored {
-		if _, ok := seen[c.Text]; ok {
+		key := normalizeQuote(c.Text)
+		if _, ok := seen[key]; ok {
 			continue
 		}
 		unique = append(unique, c.Text)
-		seen[c.Text] = struct{}{}
+		seen[key] = struct{}{}
 		if len(unique) >= limit {
 			break
 		}
@@ -392,8 +399,18 @@ func (llm *LLMClient) GenerateSummary(req SummaryRequest, candidates []string) (
 	return strings.TrimSpace(resp.Choices[0].Message.Content), nil
 }
 
-func generateFallbacks(llm *LLMClient, outputPath string) error {
+func generateFallbacks(llm *LLMClient, outputPath string, samples []string) error {
+	sampleText := ""
+	if len(samples) > 0 {
+		maxSample := min(6, len(samples))
+		for i := 0; i < maxSample; i++ {
+			sampleText += fmt.Sprintf("%d) %s\n", i+1, samples[i])
+		}
+	}
 	prompt := "你是Ingress老黄历年终总结的写手，请生成80条面向算命次数不足用户的短句，每条30-60字。语气幽默、略带调侃但友好，尽量使用Ingress玩家语境。不要编号，不要空行，每行一条。"
+	if sampleText != "" {
+		prompt += "\n以下是参考示例，请保持风格一致：\n" + sampleText
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 	resp, err := llm.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
@@ -469,4 +486,64 @@ func writeJSON(path string, data any) error {
 		return err
 	}
 	return os.WriteFile(path, bytes, 0o644)
+}
+
+func loadAnnualFile(path string) (map[string]AnnualSummary, error) {
+	if path == "" {
+		return nil, errors.New("annual 输出路径为空")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var annual map[string]AnnualSummary
+	if err := json.Unmarshal(data, &annual); err != nil {
+		return nil, err
+	}
+	if annual == nil {
+		return nil, errors.New("annual 为空")
+	}
+	return annual, nil
+}
+
+func quoteScore(q string) int {
+	trimmed := strings.TrimSpace(q)
+	length := utf8.RuneCountInString(trimmed)
+	if length == 0 {
+		return 0
+	}
+	score := length
+	if length >= 10 && length <= 26 {
+		score += 8
+	}
+	if strings.Contains(trimmed, "但是") || strings.Contains(trimmed, "却") || strings.Contains(trimmed, "不过") {
+		score += 3
+	}
+	if strings.ContainsAny(trimmed, "!?？！") {
+		score += 2
+	}
+	if strings.Count(trimmed, "，") >= 2 {
+		score += 3
+	}
+	if strings.Contains(trimmed, "不要") || strings.Contains(trimmed, "一定") {
+		score += 2
+	}
+	return score
+}
+
+func normalizeQuote(q string) string {
+	trimmed := strings.TrimSpace(q)
+	trimmed = strings.TrimSuffix(trimmed, "。")
+	trimmed = strings.TrimSuffix(trimmed, "！")
+	trimmed = strings.TrimSuffix(trimmed, "!")
+	trimmed = strings.TrimSuffix(trimmed, "？")
+	trimmed = strings.TrimSuffix(trimmed, "?")
+	return strings.ToLower(trimmed)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
