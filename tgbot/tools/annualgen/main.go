@@ -382,7 +382,7 @@ func buildSummaryRequest(stat AnnualUserStats, totalDays int) SummaryRequest {
 
 func (llm *LLMClient) GenerateSummary(req SummaryRequest, candidates []string) (string, error) {
 	payload, _ := json.MarshalIndent(req, "", "  ")
-	prompt := "你是Ingress老黄历年终总结的写手，请根据以下用户数据，写一段100-200字的中文年终总结。风格幽默、有点损但友好，允许引用候选语句中的梗。请至少引用或轻微改写1条候选语句，候选语句涉及Ingress相关名词请保持英文。不要输出列表或JSON，只输出总结正文。\n\n用户数据:\n" + string(payload)
+	prompt := "你是Ingress老黄历年终总结的写手，请根据以下用户数据，写一段100-200字的中文年终总结。风格幽默、有点损但友好，允许引用候选语句中的梗。请至少引用或轻微改写1条候选语句，候选语句涉及Ingress相关名词请保持英文。不要输出列表或JSON，只输出总结正文。\n\n字段说明：\n- TotalDays：统计的总天数。\n- ActiveDays：统计期间用户进行了算命的天数。\n- AICount：AI提供的算命结果的总条数（每次算命由AI提供的结果可能为0-2条）。\n- FirstDate：统计期间第一次算命的日期。\n- LastDate：统计期间最后一次算命的日期。\n\n用户数据:\n" + string(payload)
 	if len(candidates) == 0 {
 		prompt += "\n候选语句为空，请自己发挥但仍保持Ingress玩家语境。"
 	}
