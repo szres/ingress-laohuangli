@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -164,21 +163,37 @@ func shuffle(arr []*AIInstance) []*AIInstance {
 }
 
 func initOpenAI(self *AIInstance) {
-	apiKey := os.Getenv("OPENAI_API_KEY")
+	apiKey := GetOpenAIAPIKey()
 	if apiKey == "" {
 		fmt.Println("OpenAI api key is empty")
 		self.Valid = false
 		return
 	}
 	config := openai.DefaultConfig(apiKey)
-	if os.Getenv("OPENAI_BASE_URL") != "" {
-		config.BaseURL = os.Getenv("OPENAI_BASE_URL")
+	if baseURL := GetOpenAIBaseURL(); baseURL != "" {
+		config.BaseURL = baseURL
 	}
 	openaiClient = openai.NewClientWithConfig(config)
 	if getContentOpenAI(self, time.Now(), &AIContentPool) == nil {
 		self.Valid = true
 	} else {
 		self.Valid = false
+	}
+}
+
+// reloadAIConfig 热重载 AI 配置（配置变更后调用）
+func reloadAIConfig() {
+	fmt.Println("热重载 AI 配置...")
+	for _, ai := range AIs {
+		if ai.Name == "OpenAI Like" {
+			ai.Init(ai)
+			if ai.Valid {
+				fmt.Println("AI 配置重载成功")
+			} else {
+				fmt.Println("AI 配置重载失败")
+			}
+			return
+		}
 	}
 }
 
@@ -215,8 +230,8 @@ func getContentOpenAI(self *AIInstance, t time.Time, pool *[]string) (err error)
 		Messages: prompt,
 		Stream:   false,
 	}
-	if os.Getenv("OPENAI_MODEL") != "" {
-		req.Model = os.Getenv("OPENAI_MODEL")
+	if model := GetOpenAIModel(); model != "" {
+		req.Model = model
 	}
 
 	reqJSON, _ := json.MarshalIndent(req, "", "  ")
