@@ -2,11 +2,8 @@ package main
 
 import (
 	"fmt"
-	"log"
-	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 	_ "time/tzdata"
@@ -52,19 +49,20 @@ var db *scribble.Driver
 
 func SetupApp() {
 	db, _ = scribble.New("../db", nil)
+
+	// 初始化日志缓冲
+	InitLogBuffer(1000)
+
+	// 加载配置（优先 DB，否则从环境变量初始化）
+	loadConfig()
+
+	// 从配置中读取运行时变量
+	gToken = GetBotToken()
+	gAdminID = GetAdminID()
+	gKumaPushURL = GetKumaPushURL()
+
 	laoHL.init(db)
 	laoHL.start()
-
-	// 优先读取环境变量，或者你的 testEnv 逻辑
-	if os.Getenv("BOT_TOKEN") != "" {
-		gToken = os.Getenv("BOT_TOKEN")
-		gAdminID, _ = strconv.ParseInt(os.Getenv("BOT_ADMIN_ID"), 10, 64)
-		gKumaPushURL = os.Getenv("KUMA_PUSH_URL")
-	} else {
-		db.Read("test", "env", &testEnv)
-		gToken = testEnv.Token
-		// ... 其他 testEnv 逻辑
-	}
 
 	gStrCompareAlgo = metrics.NewJaro()
 	gStrCompareAlgo.CaseSensitive = false
@@ -73,12 +71,9 @@ func SetupApp() {
 	initAIs()
 }
 
+// StartFileServer 已被 StartAPIServer 替代，保留空壳避免编译错误
 func StartFileServer() {
-	http.Handle("/", http.FileServer(http.Dir("../db/datas")))
-	err := http.ListenAndServe(":80", nil)
-	if err != nil {
-		panic(err)
-	}
+	// 已迁移到 api.go 中的 StartAPIServer
 }
 
 var b *tele.Bot
@@ -90,10 +85,24 @@ func fullName(u *tele.User) string {
 	return u.FirstName + " " + u.LastName
 }
 
-func main() {
-	SetupApp()
-	NominationInit()
-	fmt.Println("老黄历启动！")
+// restartBot 停止旧 bot 并重新启动（用于 token/管理员变更后热重载）
+func restartBot() bool {
+	if b != nil {
+		fmt.Println("正在停止旧 Telegram Bot...")
+		b.Stop()
+		b = nil
+	}
+	return startBot()
+}
+
+func startBot() bool {
+	gToken = GetBotToken()
+	gAdminID = GetAdminID()
+	if gToken == "" {
+		fmt.Println("⚠️ BOT_TOKEN 未设置，请通过 Web 管理面板配置后重启服务")
+		return false
+	}
+
 	pref := tele.Settings{
 		Token:  gToken,
 		Poller: &tele.LongPoller{Timeout: 5 * time.Second},
@@ -101,8 +110,8 @@ func main() {
 	var err error
 	b, err = tele.NewBot(pref)
 	if err != nil {
-		log.Fatal(err)
-		return
+		fmt.Println("⚠️ Telegram Bot 启动失败:", err)
+		return false
 	}
 
 	for _, s := range chatCMD {
@@ -151,14 +160,31 @@ func main() {
 		})
 	})
 
-	go StartFileServer()
-	fmt.Println("上线！")
 	go b.Start()
+	fmt.Println("Telegram Bot 已启动")
+	return true
+}
+
+func main() {
+	SetupApp()
+	NominationInit()
+	fmt.Println("老黄历启动！")
+
+	// 启动 API 服务器（始终运行，用于 Web 管理）
+	go StartAPIServer()
+
+	// 尝试启动 Telegram Bot
+	botStarted := startBot()
+	if !botStarted {
+		fmt.Println("服务已启动（仅 Web 管理模式），请通过管理面板配置 BOT_TOKEN 后重启服务")
+	}
 
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, os.Interrupt, syscall.SIGTERM)
 	<-sc
-	b.Stop()
+	if b != nil {
+		b.Stop()
+	}
 	fmt.Println("由于即将关闭，进行数据备份")
 	laoHL.save()
 	<-time.After(time.Second * 1)

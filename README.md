@@ -18,13 +18,21 @@
 首先拷贝 `.env-default` 为 `.env`
 
 1. 在 `.env` 中设置必要信息
-   - `BOT_TOKEN`: Telegram的bot token **[必填项]**
-   - `OPENAI_API_KEY`: OPENAI的api key **[可留空]**
-   - `BOT_ADMIN_ID`: 机器人管理员的Telegram ID，配置为管理员的ID可以使用更多命令 **[可留空]**
+   - `ADMIN_USERNAME`: 管理后台用户名（默认 `admin`）
+   - `ADMIN_PASSWORD`: 管理后台密码（默认 `laohuangli`）
    - `KUMA_PUSH_URL`: 使用 [kuma-push](https://github.com/Nigh/kuma-push) 驱动的 [uptime-Kuma](https://github.com/louislam/uptime-kuma "uptimeKuma") 监控服务的推送地址，不带参数 **[可留空]**
-   - `WEB_DOMAIN`: 老黄历网页的托管地址 **[可留空]**
    - `VALID_ANNUAL`: 年终总结展示年份（例如 2024） **[可留空]**
-2. 根据需要运行下面的命令
+
+2. 启动服务后，通过 `http://your-domain:4090/admin` 登录管理后台，在 Web 界面中设置以下配置：
+   - `BOT_TOKEN`: Telegram的bot token **[必填项]**
+   - `BOT_ADMIN_ID`: 机器人管理员的Telegram ID **[可留空]**
+   - `OPENAI_API_KEY`: OPENAI的api key **[可留空]**
+   - `OPENAI_BASE_URL`: 自定义 OpenAI API 地址 **[可留空]**
+   - `OPENAI_MODEL`: 自定义模型名称 **[可留空]**
+
+   > **注意**：配置存储在数据库中，通过 Web 管理面板修改后即时生效（AI 配置自动热重载），无需重启服务。
+
+3. 根据需要运行下面的命令
 
 ```shell
 # 初次运行
@@ -36,7 +44,10 @@ make upgrade
 make clean
 ```
 
-3. `website` 容器包含了一个 `node` 驱动的前端页面用于展示当日算命信息与查看模板词条信息，方便用户提名含有模板的词条。前端页面默认暴露于 `4090` 端口。
+4. `website` 容器包含了一个 `node` 驱动的前端页面，前端页面默认暴露于 `4090` 端口，功能包括：
+   - **首页**：展示当日算命信息
+   - **提名助手**：查看模板词条信息，方便用户提名含有模板的词条
+   - **管理后台**：通过 `http://your-domain:4090/admin` 访问（需登录），可查看实时日志、在线修改 Bot Token、管理员 ID、AI 配置等，无需重启服务
 
 ## 数据
 
@@ -45,9 +56,11 @@ make clean
 ```
 db/
 ├── datas/
+│   ├── config.json           #应用配置（从 .env 初始化，可通过 web 管理面板修改）
 │   ├── laohuangli-user.json  #用户提名词条
 │   ├── laohuangli.json       #本地词条
-│   └── templates.json        #词条模板
+│   ├── templates.json        #词条模板
+│   └── bot.log               #运行日志
 └── history/
     └── $date.json            #历史记录
 ```
