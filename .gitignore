@@ -23,3 +23,11 @@ test*
 
 db
 .env
+
+# SvelteKit 构建产物
+tgbot/dist/
+website/build/
+website/.svelte-kit/
+
+# IDE
+.kilo/

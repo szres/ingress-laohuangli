@@ -1,8 +1,7 @@
-export const load = async () => {
-	const baseUrl = `http://${import.meta.env.VITE_DATA_URL}`;
+export const load = async ({ fetch }) => {
 	const [templatesRes, entriesRes] = await Promise.all([
-		fetch(`${baseUrl}/api/templates`),
-		fetch(`${baseUrl}/api/entries`)
+		fetch('/api/templates'),
+		fetch('/api/entries')
 	]);
 
 	const templates = templatesRes.ok ? await templatesRes.json() : {};

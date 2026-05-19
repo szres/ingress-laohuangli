@@ -1,12 +1,11 @@
-import adapter from '@sveltejs/adapter-node';
+import adapter from '@sveltejs/adapter-static';
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
 	kit: {
-		adapter: adapter(),
-		csrf: {
-			trustedOrigins: ['http://localhost:4090']
-		}
+		adapter: adapter({
+			fallback: 'index.html'
+		})
 	}
 };
 

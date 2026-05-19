@@ -1,7 +1,11 @@
 package main
 
 import (
+	"embed"
+	"encoding/json"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"os/signal"
 	"syscall"
@@ -9,9 +13,14 @@ import (
 	_ "time/tzdata"
 
 	"github.com/adrg/strutil/metrics"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/static"
 	scribble "github.com/nanobox-io/golang-scribble"
 	tele "gopkg.in/telebot.v3"
 )
+
+//go:embed dist/*
+var staticFS embed.FS
 
 type testenv struct {
 	Token     string `json:"token"`
@@ -71,11 +80,6 @@ func SetupApp() {
 	initAIs()
 }
 
-// StartFileServer 已被 StartAPIServer 替代，保留空壳避免编译错误
-func StartFileServer() {
-	// 已迁移到 api.go 中的 StartAPIServer
-}
-
 var b *tele.Bot
 
 func fullName(u *tele.User) string {
@@ -89,10 +93,28 @@ func fullName(u *tele.User) string {
 func restartBot() bool {
 	if b != nil {
 		fmt.Println("正在停止旧 Telegram Bot...")
-		b.Stop()
+		b.RemoveWebhook(true)
 		b = nil
 	}
 	return startBot()
+}
+
+// handleWebhook 处理 Telegram Webhook 推送
+func handleWebhook(c fiber.Ctx) error {
+	// 验证 URL 中的 token 与当前 bot token 匹配
+	urlToken := c.Params("token")
+	if urlToken != gToken {
+		return c.SendStatus(fiber.StatusNotFound)
+	}
+
+	var update tele.Update
+	body := c.Body()
+	if err := json.Unmarshal(body, &update); err != nil {
+		fmt.Println("Webhook 解析失败:", err)
+		return c.SendStatus(fiber.StatusBadRequest)
+	}
+	b.ProcessUpdate(update)
+	return c.SendStatus(fiber.StatusOK)
 }
 
 func startBot() bool {
@@ -105,7 +127,7 @@ func startBot() bool {
 
 	pref := tele.Settings{
 		Token:  gToken,
-		Poller: &tele.LongPoller{Timeout: 5 * time.Second},
+		Poller: &tele.LongPoller{Timeout: 10 * time.Second},
 	}
 	var err error
 	b, err = tele.NewBot(pref)
@@ -160,7 +182,24 @@ func startBot() bool {
 		})
 	})
 
-	go b.Start()
+	// 注册 Webhook（如果有域名配置）
+	webDomain := GetWebDomain()
+	if webDomain != "" {
+		webhookURL := "https://" + webDomain + "/webhook/" + gToken
+		err = b.SetWebhook(&tele.Webhook{
+			Endpoint: &tele.WebhookEndpoint{PublicURL: webhookURL},
+			Listen:   "", // 不自己启动 HTTP server
+		})
+		if err != nil {
+			fmt.Println("⚠️ Webhook 注册失败，降级为 Long Polling:", err)
+		} else {
+			fmt.Println("Telegram Webhook 已注册:", webhookURL)
+		}
+	} else {
+		fmt.Println("WEB_DOMAIN 未配置，使用 Long Polling 模式")
+		go b.Start()
+	}
+
 	fmt.Println("Telegram Bot 已启动")
 	return true
 }
@@ -170,8 +209,36 @@ func main() {
 	NominationInit()
 	fmt.Println("老黄历启动！")
 
-	// 启动 API 服务器（始终运行，用于 Web 管理）
-	go StartAPIServer()
+	// 创建 Fiber app
+	app := fiber.New()
+
+	// 注册 API + Webhook 路由（更具体的路由优先匹配）
+	SetupRoutes(app)
+
+	// 提取嵌入的 dist 子目录
+	distFS, err := fs.Sub(staticFS, "dist")
+	if err != nil {
+		fmt.Println("⚠️ 无法加载嵌入的前端文件:", err)
+	} else {
+		// 静态文件服务 + SPA fallback
+		// static.New 从 FS 根路径 "/" 查找文件，NotFoundHandler 处理 SPA 路由
+		app.Get("/*", static.New("", static.Config{
+			FS: distFS,
+			NotFoundHandler: func(c fiber.Ctx) error {
+				c.Set("Content-Type", "text/html; charset=utf-8")
+				f, err := distFS.Open("index.html")
+				if err != nil {
+					return c.SendStatus(fiber.StatusNotFound)
+				}
+				defer f.Close()
+				data, err := io.ReadAll(f)
+				if err != nil {
+					return c.SendStatus(fiber.StatusInternalServerError)
+				}
+				return c.Send(data)
+			},
+		}))
+	}
 
 	// 尝试启动 Telegram Bot
 	botStarted := startBot()
@@ -179,11 +246,21 @@ func main() {
 		fmt.Println("服务已启动（仅 Web 管理模式），请通过管理面板配置 BOT_TOKEN 后重启服务")
 	}
 
+	// 启动 Fiber HTTP 服务
+	go func() {
+		fmt.Println("Fiber HTTP 服务启动，监听 :80")
+		if err := app.Listen(":80", fiber.ListenConfig{
+			DisableStartupMessage: true,
+		}); err != nil {
+			panic(err)
+		}
+	}()
+
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, os.Interrupt, syscall.SIGTERM)
 	<-sc
 	if b != nil {
-		b.Stop()
+		b.RemoveWebhook(true)
 	}
 	fmt.Println("由于即将关闭，进行数据备份")
 	laoHL.save()
