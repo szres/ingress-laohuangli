@@ -4,10 +4,24 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 
 	"golang.org/x/crypto/bcrypt"
 )
+
+// normalizeDomain 剥离域名中的协议前缀和尾部斜杠
+// "https://example.com/" → "example.com"
+func normalizeDomain(raw string) string {
+	domain := strings.TrimSpace(raw)
+	if domain == "" {
+		return ""
+	}
+	domain = strings.TrimPrefix(domain, "https://")
+	domain = strings.TrimPrefix(domain, "http://")
+	domain = strings.TrimRight(domain, "/")
+	return domain
+}
 
 // AppConfig 应用配置，存储在 scribble DB 中
 type AppConfig struct {
@@ -83,7 +97,7 @@ func initConfigFromEnv() {
 	appConfig.OpenAIAPIKey = ""
 	appConfig.OpenAIBaseURL = ""
 	appConfig.OpenAIModel = ""
-	appConfig.WebDomain = os.Getenv("WEB_DOMAIN")
+	appConfig.WebDomain = normalizeDomain(os.Getenv("WEB_DOMAIN"))
 
 	// 管理员账户：从环境变量读取，或使用默认值
 	adminUser := os.Getenv("ADMIN_USERNAME")
@@ -188,7 +202,7 @@ func UpdateConfig(update AppConfig) {
 		}
 	}
 	if update.WebDomain != "" {
-		appConfig.WebDomain = update.WebDomain
+		appConfig.WebDomain = normalizeDomain(update.WebDomain)
 	}
 
 	db.Write("datas", "config", appConfig)
@@ -208,9 +222,9 @@ func GetUsername() string {
 	return appConfig.AdminUsername
 }
 
-// GetWebDomain 获取 Webhook + 前端域名
+// GetWebDomain 获取 Webhook + 前端域名（自动规范化）
 func GetWebDomain() string {
 	configMu.RLock()
 	defer configMu.RUnlock()
-	return appConfig.WebDomain
+	return normalizeDomain(appConfig.WebDomain)
 }
