@@ -19,6 +19,7 @@ type AppConfig struct {
 	OpenAIModel   string `json:"openai_model"`
 	AdminUsername string `json:"admin_username"`
 	AdminPassword string `json:"admin_password"` // bcrypt 哈希
+	WebDomain     string `json:"web_domain"`     // Webhook + 前端域名
 }
 
 var appConfig AppConfig
@@ -33,6 +34,7 @@ type ConfigJSON struct {
 	OpenAIBaseURL string `json:"openai_base_url"`
 	OpenAIModel   string `json:"openai_model"`
 	AdminUsername string `json:"admin_username"`
+	WebDomain     string `json:"web_domain"`
 }
 
 // maskString 对敏感字符串脱敏，保留前4位和后4位
@@ -53,6 +55,7 @@ func (c *AppConfig) ToJSON() ConfigJSON {
 		OpenAIBaseURL: c.OpenAIBaseURL,
 		OpenAIModel:   c.OpenAIModel,
 		AdminUsername: c.AdminUsername,
+		WebDomain:     c.WebDomain,
 	}
 }
 
@@ -80,6 +83,7 @@ func initConfigFromEnv() {
 	appConfig.OpenAIAPIKey = ""
 	appConfig.OpenAIBaseURL = ""
 	appConfig.OpenAIModel = ""
+	appConfig.WebDomain = os.Getenv("WEB_DOMAIN")
 
 	// 管理员账户：从环境变量读取，或使用默认值
 	adminUser := os.Getenv("ADMIN_USERNAME")
@@ -183,6 +187,9 @@ func UpdateConfig(update AppConfig) {
 			appConfig.AdminPassword = string(hashedPass)
 		}
 	}
+	if update.WebDomain != "" {
+		appConfig.WebDomain = update.WebDomain
+	}
 
 	db.Write("datas", "config", appConfig)
 }
@@ -199,4 +206,11 @@ func GetUsername() string {
 	configMu.RLock()
 	defer configMu.RUnlock()
 	return appConfig.AdminUsername
+}
+
+// GetWebDomain 获取 Webhook + 前端域名
+func GetWebDomain() string {
+	configMu.RLock()
+	defer configMu.RUnlock()
+	return appConfig.WebDomain
 }

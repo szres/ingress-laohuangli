@@ -1,13 +1,13 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/static"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -46,105 +46,71 @@ func ValidateJWT(tokenString string) (*Claims, error) {
 	return nil, fmt.Errorf("invalid token")
 }
 
-// AuthMiddleware 认证中间件
-func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// 从 Authorization header 或 cookie 获取 token
-		tokenStr := ""
-		authHeader := r.Header.Get("Authorization")
-		if strings.HasPrefix(authHeader, "Bearer ") {
-			tokenStr = strings.TrimPrefix(authHeader, "Bearer ")
-		}
-		if tokenStr == "" {
-			cookie, err := r.Cookie("auth_token")
-			if err == nil {
-				tokenStr = cookie.Value
-			}
-		}
-		if tokenStr == "" {
-			http.Error(w, `{"error":"未授权"}`, http.StatusUnauthorized)
-			return
-		}
-
-		claims, err := ValidateJWT(tokenStr)
-		if err != nil {
-			http.Error(w, `{"error":"token 无效或已过期"}`, http.StatusUnauthorized)
-			return
-		}
-
-		// 将 username 存入 request context
-		r.Header.Set("X-Username", claims.Username)
-		next(w, r)
+// AuthMiddleware Fiber JWT 认证中间件
+func AuthMiddleware(c fiber.Ctx) error {
+	tokenStr := ""
+	authHeader := c.Get("Authorization")
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		tokenStr = strings.TrimPrefix(authHeader, "Bearer ")
 	}
+	if tokenStr == "" {
+		tokenStr = c.Cookies("auth_token")
+	}
+	if tokenStr == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "未授权"})
+	}
+
+	claims, err := ValidateJWT(tokenStr)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "token 无效或已过期"})
+	}
+
+	c.Locals("username", claims.Username)
+	return c.Next()
 }
 
 // handleLogin 处理登录请求
-func handleLogin(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
-		return
-	}
-
+func handleLogin(c fiber.Ctx) error {
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"请求格式错误"}`, http.StatusBadRequest)
-		return
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "请求格式错误"})
 	}
 
 	if req.Username != GetUsername() || !VerifyPassword(req.Password) {
-		http.Error(w, `{"error":"用户名或密码错误"}`, http.StatusUnauthorized)
-		return
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "用户名或密码错误"})
 	}
 
 	token, err := GenerateJWT(req.Username)
 	if err != nil {
-		http.Error(w, `{"error":"生成 token 失败"}`, http.StatusInternalServerError)
-		return
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "生成 token 失败"})
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"token": token})
+	return c.JSON(fiber.Map{"token": token})
 }
 
 // handleGetConfig 获取配置（脱敏）
-func handleGetConfig(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
-		return
-	}
-
+func handleGetConfig(c fiber.Ctx) error {
 	configMu.RLock()
 	cfg := appConfig.ToJSON()
 	configMu.RUnlock()
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(cfg)
+	return c.JSON(cfg)
 }
 
 // handleUpdateConfig 更新配置
-func handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPut {
-		http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
-		return
-	}
-
+func handleUpdateConfig(c fiber.Ctx) error {
 	var update AppConfig
-	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
-		http.Error(w, `{"error":"请求格式错误"}`, http.StatusBadRequest)
-		return
+	if err := c.Bind().JSON(&update); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "请求格式错误"})
 	}
 
-	// 检查是否有 bot 相关配置变更
-	botChanged := update.BotToken != "" || update.AdminID != ""
-	// 检查是否有 AI 配置变更
+	botChanged := update.BotToken != "" || update.AdminID != "" || update.WebDomain != ""
 	aiChanged := update.OpenAIAPIKey != "" || update.OpenAIBaseURL != "" || update.OpenAIModel != ""
 
 	UpdateConfig(update)
 
-	// 如果 bot 配置变更，热重载 bot
 	if botChanged {
 		go func() {
 			if restartBot() {
@@ -155,24 +121,17 @@ func handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 
-	// 如果 AI 配置变更，热重载
 	if aiChanged {
 		go reloadAIConfig()
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	return c.JSON(fiber.Map{"status": "ok"})
 }
 
 // handleGetLogs 获取日志
-func handleGetLogs(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
-		return
-	}
-
-	n := 200 // 默认返回最近200行
-	if nStr := r.URL.Query().Get("n"); nStr != "" {
+func handleGetLogs(c fiber.Ctx) error {
+	n := 200
+	if nStr := c.Query("n"); nStr != "" {
 		if v, err := strconv.Atoi(nStr); err == nil && v > 0 {
 			n = v
 		}
@@ -183,92 +142,56 @@ func handleGetLogs(w http.ResponseWriter, r *http.Request) {
 		lines = logBuffer.GetLines(n)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"lines": lines})
+	return c.JSON(fiber.Map{"lines": lines})
 }
 
 // handleGetCache 获取今日缓存数据（公开 API）
-func handleGetCache(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	result := map[string]interface{}{
+func handleGetCache(c fiber.Ctx) error {
+	c.Set("Access-Control-Allow-Origin", "*")
+	result := fiber.Map{
 		"date":   laoHL.cache.Date,
 		"today":  laoHL.cache.Today,
 		"caches": laoHL.cache.Caches,
 	}
-	json.NewEncoder(w).Encode(result)
+	return c.JSON(result)
 }
 
 // handleGetTemplates 获取模板列表（公开 API）
-func handleGetTemplates(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	json.NewEncoder(w).Encode(laoHL.templates)
+func handleGetTemplates(c fiber.Ctx) error {
+	c.Set("Access-Control-Allow-Origin", "*")
+	return c.JSON(laoHL.templates)
 }
 
-// handleGetEntries 获取词条列表（公开 API，合并系统+用户词条）
-func handleGetEntries(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	result := map[string]interface{}{
+// handleGetEntries 获取词条列表（公开 API）
+func handleGetEntries(c fiber.Ctx) error {
+	c.Set("Access-Control-Allow-Origin", "*")
+	result := fiber.Map{
 		"entries":      laoHL.entries,
 		"entries_user": laoHL.entriesUser,
 	}
-	json.NewEncoder(w).Encode(result)
+	return c.JSON(result)
 }
 
-// StartAPIServer 启动 API 服务器，替代原来的 StartFileServer
-func StartAPIServer() {
-	mux := http.NewServeMux()
-
+// SetupRoutes 注册所有 Fiber 路由
+func SetupRoutes(app *fiber.App) {
 	// 公开 API
-	mux.HandleFunc("/api/cache", handleGetCache)
-	mux.HandleFunc("/api/templates", handleGetTemplates)
-	mux.HandleFunc("/api/entries", handleGetEntries)
+	app.Get("/api/cache", handleGetCache)
+	app.Get("/api/templates", handleGetTemplates)
+	app.Get("/api/entries", handleGetEntries)
 
 	// 认证 API
-	mux.HandleFunc("/api/auth/login", handleLogin)
+	app.Post("/api/auth/login", handleLogin)
 
 	// 管理 API（需要认证）
-	mux.HandleFunc("/api/admin/config", AuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			handleGetConfig(w, r)
-		case http.MethodPut:
-			handleUpdateConfig(w, r)
-		case http.MethodOptions:
-			w.Header().Set("Access-Control-Allow-Methods", "GET, PUT, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-			w.WriteHeader(http.StatusOK)
-		default:
-			http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
-		}
+	app.Get("/api/admin/config", AuthMiddleware, handleGetConfig)
+	app.Put("/api/admin/config", AuthMiddleware, handleUpdateConfig)
+	app.Get("/api/admin/logs", AuthMiddleware, handleGetLogs)
+
+	// Webhook 端点（Telegram 推送），路径中附带 bot token 防止冲突
+	app.Post("/webhook/:token", handleWebhook)
+
+	// 兼容旧的静态文件访问
+	app.Get("/static/*", static.New("../db/datas", static.Config{
+		Browse: false,
 	}))
-	mux.HandleFunc("/api/admin/logs", AuthMiddleware(handleGetLogs))
-
-	// 保持兼容：旧的静态文件服务（JSON 文件直接访问）
-	mux.Handle("/", http.FileServer(http.Dir("../db/datas")))
-
-	fmt.Println("API 服务器启动，监听 :80")
-	err := http.ListenAndServe(":80", mux)
-	if err != nil {
-		panic(err)
-	}
 }

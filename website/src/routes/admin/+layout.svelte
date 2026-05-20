@@ -10,14 +10,10 @@
 		<h2 class="text-lg font-bold mb-4 px-2">管理后台</h2>
 		<ul class="menu menu-lg gap-1">
 			<li>
-				<a href="/admin" class:active={currentPath === '/admin'}>
-					⚙️ 配置管理
-				</a>
+				<a href="/admin" class:active={currentPath === '/admin'}> ⚙️ 配置管理 </a>
 			</li>
 			<li>
-				<a href="/admin/logs" class:active={currentPath === '/admin/logs'}>
-					📋 日志查看
-				</a>
+				<a href="/admin/logs" class:active={currentPath === '/admin/logs'}> 📋 日志查看 </a>
 			</li>
 		</ul>
 		<div class="divider"></div>

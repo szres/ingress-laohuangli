@@ -52,12 +52,17 @@
 		</div>
 	</div>
 
-	<div bind:this={logContainer} class="flex-1 bg-base-300 rounded-lg p-4 overflow-auto font-mono text-sm">
+	<div
+		bind:this={logContainer}
+		class="flex-1 bg-base-300 rounded-lg p-4 overflow-auto font-mono text-sm"
+	>
 		{#if logs.length === 0}
 			<div class="text-center text-base-content/50 py-8">暂无日志</div>
 		{:else}
 			{#each logs as line, i}
-				<div class="whitespace-pre-wrap border-b border-base-content/5 py-0.5 hover:bg-base-content/5">
+				<div
+					class="whitespace-pre-wrap border-b border-base-content/5 py-0.5 hover:bg-base-content/5"
+				>
 					<span class="text-base-content/40 select-none mr-2">{i + 1}</span>
 					{line}
 				</div>
