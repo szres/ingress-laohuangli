@@ -65,6 +65,10 @@ func SetupApp() {
 	// 加载配置（优先 DB，否则从环境变量初始化）
 	loadConfig()
 
+	// 加载 API Token 和用户统计缓存
+	loadAPITokens()
+	loadUserStats()
+
 	// 从配置中读取运行时变量
 	gToken = GetBotToken()
 	gAdminID = GetAdminID()

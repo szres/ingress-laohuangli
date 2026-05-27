@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/limiter"
 	"github.com/gofiber/fiber/v3/middleware/static"
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -145,39 +146,54 @@ func handleGetLogs(c fiber.Ctx) error {
 	return c.JSON(fiber.Map{"lines": lines})
 }
 
-// handleGetCache 获取今日缓存数据（公开 API）
-func handleGetCache(c fiber.Ctx) error {
-	c.Set("Access-Control-Allow-Origin", "*")
-	result := fiber.Map{
-		"date":   laoHL.cache.Date,
-		"today":  laoHL.cache.Today,
-		"caches": laoHL.cache.Caches,
+// BrowserOnlyMiddleware Sec-Fetch-Site 浏览器校验（Forbidden Header，JS 无法伪造）
+func BrowserOnlyMiddleware(c fiber.Ctx) error {
+	secFetchSite := c.Get("Sec-Fetch-Site")
+	if secFetchSite != "same-origin" && secFetchSite != "same-site" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "仅允许浏览器访问",
+		})
 	}
-	return c.JSON(result)
+	return c.Next()
 }
 
-// handleGetTemplates 获取模板列表（公开 API）
+// handleTodayCount 获取今日已算命用户数量（公开 API）
+func handleTodayCount(c fiber.Ctx) error {
+	return c.JSON(fiber.Map{
+		"date":  laoHL.cache.Date,
+		"count": len(laoHL.cache.Caches),
+	})
+}
+
+// handleGetCache 获取今日缓存数据（今日指引 + 众生列表）
+func handleGetCache(c fiber.Ctx) error {
+	return c.JSON(laoHL.cache)
+}
+
+// handleGetTemplates 获取模板列表
 func handleGetTemplates(c fiber.Ctx) error {
-	c.Set("Access-Control-Allow-Origin", "*")
 	return c.JSON(laoHL.templates)
 }
 
-// handleGetEntries 获取词条列表（公开 API）
+// handleGetEntries 获取词条列表（本地 + 用户提名）
 func handleGetEntries(c fiber.Ctx) error {
-	c.Set("Access-Control-Allow-Origin", "*")
-	result := fiber.Map{
+	return c.JSON(fiber.Map{
 		"entries":      laoHL.entries,
 		"entries_user": laoHL.entriesUser,
-	}
-	return c.JSON(result)
+	})
 }
 
 // SetupRoutes 注册所有 Fiber 路由
 func SetupRoutes(app *fiber.App) {
-	// 公开 API
-	app.Get("/api/cache", handleGetCache)
-	app.Get("/api/templates", handleGetTemplates)
-	app.Get("/api/entries", handleGetEntries)
+	// 公开 API（速率限制：每 IP 每分钟最多 5 次）
+	publicLimiter := limiter.New(limiter.Config{
+		Max:        5,
+		Expiration: 1 * time.Minute,
+	})
+	app.Get("/api/today", BrowserOnlyMiddleware, publicLimiter, handleTodayCount)
+	app.Get("/api/cache", BrowserOnlyMiddleware, publicLimiter, handleGetCache)
+	app.Get("/api/templates", BrowserOnlyMiddleware, publicLimiter, handleGetTemplates)
+	app.Get("/api/entries", BrowserOnlyMiddleware, publicLimiter, handleGetEntries)
 
 	// 认证 API
 	app.Post("/api/auth/login", handleLogin)
@@ -186,6 +202,12 @@ func SetupRoutes(app *fiber.App) {
 	app.Get("/api/admin/config", AuthMiddleware, handleGetConfig)
 	app.Put("/api/admin/config", AuthMiddleware, handleUpdateConfig)
 	app.Get("/api/admin/logs", AuthMiddleware, handleGetLogs)
+	app.Get("/api/admin/tokens", AuthMiddleware, handleListTokens)
+	app.Post("/api/admin/tokens", AuthMiddleware, handleCreateToken)
+	app.Delete("/api/admin/tokens/:id", AuthMiddleware, handleDeleteToken)
+
+	// 用户统计 API（需要 API Token 认证）
+	app.Get("/api/user/:id/stats", APITokenMiddleware, handleUserStats)
 
 	// Webhook 端点（Telegram 推送），路径中附带 bot token 防止冲突
 	app.Post("/webhook/:token", handleWebhook)
