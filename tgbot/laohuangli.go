@@ -34,6 +34,8 @@ type laohuangli struct {
 	templates  map[string]laohuangliTemplate
 	cache      laohuangliCache
 	annual     map[string]AnnualSummary
+	// 月度归档幂等标记
+	lastArchivedMonth string
 }
 
 var laoHL laohuangli
@@ -401,6 +403,17 @@ func (lhl *laohuangli) update() {
 			lhl.createBanlancedEntries()
 			lhl.db.Write("datas", "streak", lhl.userStreak)
 			go expireUserStatsDaily()
+
+			now := time.Now()
+			if now.Day() == 1 {
+				currentMonth := now.Format("2006-01")
+				if lhl.lastArchivedMonth != currentMonth {
+					lhl.lastArchivedMonth = currentMonth
+					go archiveMonthly("../db/history")
+				}
+			} else {
+				lhl.lastArchivedMonth = ""
+			}
 		}
 	}
 }
