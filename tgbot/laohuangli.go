@@ -385,6 +385,7 @@ func (lhl *laohuangli) randomToday(id int64, name string) string {
 	}
 	lhl.cache.Push(id, name, head+body)
 	lhl.cache.Save()
+	go updateUserStatsOnFortune(id)
 	return head + body
 }
 func (lhl *laohuangli) update() {
@@ -399,6 +400,7 @@ func (lhl *laohuangli) update() {
 			lhl.cache.Save()
 			lhl.createBanlancedEntries()
 			lhl.db.Write("datas", "streak", lhl.userStreak)
+			go expireUserStatsDaily()
 		}
 	}
 }

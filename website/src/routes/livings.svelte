@@ -11,7 +11,7 @@
 		livingPool.splice(0, livingPool.length);
 		for (const k in cache) {
 			let one = { id: k, ...cache[k] };
-			if (!livingPool.hasOwnProperty(k)) {
+			if (!Object.prototype.hasOwnProperty.call(livingPool, k)) {
 				livingPool.push(one);
 			}
 		}
@@ -65,10 +65,6 @@
 	onDestroy(() => {
 		clearInterval(roller);
 	});
-	export async function load({ parent }) {
-		const { a, b } = await parent();
-		return { c: a + b };
-	}
 </script>
 
 <div class="select-none text-xl lg:text-3xl text-center font-bold">众生</div>

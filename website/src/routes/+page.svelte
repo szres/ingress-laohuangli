@@ -8,13 +8,10 @@
 
 	import { onMount, onDestroy } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
-	async function dataUpdate() {
-		invalidateAll();
-	}
 	let update;
 	onMount(() => {
 		update = setInterval(() => {
-			dataUpdate();
+			invalidateAll();
 		}, 120000);
 	});
 	onDestroy(() => {

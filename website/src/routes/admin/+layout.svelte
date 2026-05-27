@@ -15,6 +15,9 @@
 			<li>
 				<a href="/admin/logs" class:active={currentPath === '/admin/logs'}> 📋 日志查看 </a>
 			</li>
+			<li>
+				<a href="/admin/tokens" class:active={currentPath === '/admin/tokens'}> 🔑 API Token </a>
+			</li>
 		</ul>
 		<div class="divider"></div>
 		<a href="/" class="btn btn-ghost btn-sm">← 返回首页</a>
