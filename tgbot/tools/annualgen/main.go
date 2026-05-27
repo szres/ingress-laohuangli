@@ -17,7 +17,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	scribble "github.com/nanobox-io/golang-scribble"
 	openai "github.com/sashabaranov/go-openai"
 )
 
@@ -91,11 +90,6 @@ func main() {
 		*outPath = filepath.Join(*dbPath, "annual", fmt.Sprintf("%d.json", *year))
 	}
 
-	db, err := scribble.New(*dbPath, nil)
-	if err != nil {
-		exitWithError(fmt.Errorf("初始化 db 失败: %w", err))
-	}
-
 	llmClient, err := newLLMClient()
 	if err != nil {
 		exitWithError(err)
@@ -113,7 +107,7 @@ func main() {
 		return
 	}
 
-	annual, stats, err := buildAnnualSummary(db, *dbPath, *outPath, *year, *threshold, *maxCandidates, llmClient, *fallbackPath)
+	annual, stats, err := buildAnnualSummary(*dbPath, *outPath, *year, *threshold, *maxCandidates, llmClient, *fallbackPath)
 	if err != nil {
 		exitWithError(err)
 	}
@@ -155,12 +149,8 @@ func newLLMClient() (*LLMClient, error) {
 	}, nil
 }
 
-func buildAnnualSummary(db *scribble.Driver, dbPath string, outPath string, year int, threshold int, maxCandidates int, llm *LLMClient, fallbackPath string) (map[string]AnnualSummary, []AnnualUserStats, error) {
+func buildAnnualSummary(dbPath string, outPath string, year int, threshold int, maxCandidates int, llm *LLMClient, fallbackPath string) (map[string]AnnualSummary, []AnnualUserStats, error) {
 	historyDir := filepath.Join(dbPath, "history")
-	files, err := os.ReadDir(historyDir)
-	if err != nil {
-		return nil, nil, fmt.Errorf("读取 history 目录失败: %w", err)
-	}
 
 	annual := make(map[string]AnnualSummary)
 	if existing, err := loadAnnualFile(outPath); err == nil {
@@ -168,20 +158,10 @@ func buildAnnualSummary(db *scribble.Driver, dbPath string, outPath string, year
 	}
 
 	statsMap := make(map[int64]*AnnualUserStats)
-	yearlyDates := make([]string, 0)
-	for _, f := range files {
-		if f.IsDir() || !strings.HasSuffix(f.Name(), ".json") {
-			continue
-		}
-		dateStr := strings.TrimSuffix(f.Name(), ".json")
-		if !isDateInYear(dateStr, year) {
-			continue
-		}
+	allEntries := readHistoryEntriesForYear(historyDir, year)
+	yearlyDates := make([]string, 0, len(allEntries))
+	for dateStr, cache := range allEntries {
 		yearlyDates = append(yearlyDates, dateStr)
-		var cache laohuangliCache
-		if err := db.Read("history", dateStr, &cache); err != nil {
-			return nil, nil, fmt.Errorf("读取 history/%s 失败: %w", dateStr, err)
-		}
 		for id, result := range cache.Caches {
 			stat := getOrInitStats(statsMap, id, result.Name)
 			stat.ActiveDays++
@@ -469,12 +449,63 @@ func randomFallback(fallbacks []string) string {
 	return fallbacks[rand.IntN(len(fallbacks))]
 }
 
-func isDateInYear(dateStr string, year int) bool {
-	t, err := time.Parse("2006-01-02", dateStr)
+type monthlyArchive map[string]laohuangliCache
+
+func readHistoryEntriesForYear(historyDir string, year int) map[string]laohuangliCache {
+	result := make(map[string]laohuangliCache)
+
+	dirEntries, err := os.ReadDir(historyDir)
 	if err != nil {
-		return false
+		return result
 	}
-	return t.Year() == year
+
+	for _, e := range dirEntries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		name := e.Name()
+		base := strings.TrimSuffix(name, ".json")
+
+		if _, err := time.Parse("2006-01", base); err == nil {
+			var archive monthlyArchive
+			data, err := os.ReadFile(filepath.Join(historyDir, name))
+			if err != nil {
+				continue
+			}
+			if err := json.Unmarshal(data, &archive); err != nil {
+				continue
+			}
+			for dateStr, cache := range archive {
+				t, err := time.Parse("2006-01-02", dateStr)
+				if err != nil {
+					continue
+				}
+				if t.Year() == year {
+					result[dateStr] = cache
+				}
+			}
+			continue
+		}
+
+		fileDate, err := time.Parse("2006-01-02", base)
+		if err != nil {
+			continue
+		}
+		if fileDate.Year() != year {
+			continue
+		}
+		var cache laohuangliCache
+		data, err := os.ReadFile(filepath.Join(historyDir, name))
+		if err != nil {
+			continue
+		}
+		if err := json.Unmarshal(data, &cache); err != nil {
+			continue
+		}
+		result[base] = cache
+	}
+
+	return result
 }
 
 func writeJSON(path string, data any) error {

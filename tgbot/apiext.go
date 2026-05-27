@@ -3,10 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -205,34 +202,10 @@ func computeUserStats(userID int64) UserStatsEntry {
 	}
 
 	// 扫描历史文件（最近 30 天）
-	historyDir := "../db/history"
-	entries, err := os.ReadDir(historyDir)
-	if err == nil {
-		for _, e := range entries {
-			name := e.Name()
-			if !strings.HasSuffix(name, ".json") {
-				continue
-			}
-			dateStr := strings.TrimSuffix(name, ".json")
-			fileDate, err := time.Parse("2006-01-02", dateStr)
-			if err != nil {
-				continue
-			}
-			if time.Since(fileDate) > 30*24*time.Hour {
-				continue
-			}
-			var cache laohuangliCache
-			data, err := os.ReadFile(filepath.Join(historyDir, name))
-			if err != nil {
-				continue
-			}
-			if err := json.Unmarshal(data, &cache); err != nil {
-				continue
-			}
-			// history JSON 的 caches key 是 string 形式的 user ID
-			if _, ok := cache.Caches[userID]; ok {
-				entry.DailyCounts[dateStr]++
-			}
+	entries := readHistoryEntries("../db/history", time.Now().AddDate(0, 0, -30))
+	for dateStr, cache := range entries {
+		if _, ok := cache.Caches[userID]; ok {
+			entry.DailyCounts[dateStr]++
 		}
 	}
 
@@ -319,31 +292,12 @@ func handleUserStats(c fiber.Ctx) error {
 
 	// 检查用户是否存在
 	if _, ok := laoHL.userStreak[userID]; !ok {
-		// 检查历史记录中是否有该用户
 		found := false
-		historyDir := "../db/history"
-		if dirEntries, err := os.ReadDir(historyDir); err == nil {
-			for _, e := range dirEntries {
-				name := e.Name()
-				if !strings.HasSuffix(name, ".json") {
-					continue
-				}
-				fileDate, _ := time.Parse("2006-01-02", strings.TrimSuffix(name, ".json"))
-				if time.Since(fileDate) > 30*24*time.Hour {
-					continue
-				}
-				data, err := os.ReadFile(filepath.Join(historyDir, name))
-				if err != nil {
-					continue
-				}
-				var cache laohuangliCache
-				if err := json.Unmarshal(data, &cache); err != nil {
-					continue
-				}
-				if _, ok := cache.Caches[userID]; ok {
-					found = true
-					break
-				}
+		entries := readHistoryEntries("../db/history", time.Now().AddDate(0, 0, -30))
+		for _, cache := range entries {
+			if _, ok := cache.Caches[userID]; ok {
+				found = true
+				break
 			}
 		}
 		if !found {
