@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"math/rand/v2"
@@ -59,6 +60,39 @@ func AIContentPush(pool *[]string, s string) {
 
 var aiContext, cancelAI = context.WithCancel(context.Background())
 
+// 每个模型独立退避；轮换下标跨次调用延续
+type openaiModelState struct {
+	nextRetry    time.Time
+	failureDelay time.Duration
+}
+
+var (
+	openaiModelMu     sync.Mutex
+	openaiModelStates = map[string]*openaiModelState{}
+	openaiNextIdx     int
+)
+
+const (
+	openaiInitialBackoff = 30 * time.Second
+	openaiMaxBackoff     = 16 * time.Minute
+)
+
+func resetOpenAIModelStates() {
+	openaiModelMu.Lock()
+	defer openaiModelMu.Unlock()
+	openaiModelStates = make(map[string]*openaiModelState)
+	openaiNextIdx = 0
+}
+
+func modelStateLocked(name string) *openaiModelState {
+	st, ok := openaiModelStates[name]
+	if !ok {
+		st = &openaiModelState{failureDelay: openaiInitialBackoff}
+		openaiModelStates[name] = st
+	}
+	return st
+}
+
 func initAIs() {
 	AIs = make([]*AIInstance, 0)
 	AIs = append(AIs, &AIInstance{
@@ -75,8 +109,6 @@ func initAIs() {
 		defer ticker.Stop()
 
 		lastHour := time.Now().Hour()
-		failureDelay := 30 * time.Second
-		var nextRegularUpdate time.Time
 
 		for {
 			select {
@@ -113,8 +145,8 @@ func initAIs() {
 						isPrefetch = true
 					}
 				} else {
-					// 常规模式：池不满 且 预取池为空 且 过了延迟时间
-					if len(AIContentPool) < 5 && len(AINextHourPool) == 0 && now.After(nextRegularUpdate) {
+					// 常规模式：池不满 且 预取池为空；退避由各模型自行计算
+					if len(AIContentPool) < 5 && len(AINextHourPool) == 0 {
 						targetPool = &AIContentPool
 						targetTime = now
 					}
@@ -134,20 +166,10 @@ func initAIs() {
 
 					if success {
 						fmt.Printf("AI content updated successfully (Prefetch: %v) at %s\n", isPrefetch, now.Format("15:04:05"))
-						failureDelay = 30 * time.Second
-						nextRegularUpdate = time.Time{} // 重置延迟
+					} else if isPrefetch {
+						fmt.Printf("Prefetch AI update failed at %s, will retry soon\n", now.Format("15:04:05"))
 					} else {
-						if !isPrefetch {
-							// 只有常规模式失败才增加延迟
-							fmt.Printf("Regular AI update failed at %s, retrying after %s\n", now.Format("15:04:05"), failureDelay)
-							nextRegularUpdate = now.Add(failureDelay)
-							failureDelay *= 2
-							if failureDelay > 16*time.Minute {
-								failureDelay = 16 * time.Minute
-							}
-						} else {
-							fmt.Printf("Prefetch AI update failed at %s, will retry soon\n", now.Format("15:04:05"))
-						}
+						fmt.Printf("Regular AI update failed at %s (per-model backoff)\n", now.Format("15:04:05"))
 					}
 				}
 			}
@@ -174,6 +196,7 @@ func initOpenAI(self *AIInstance) {
 		config.BaseURL = baseURL
 	}
 	openaiClient = openai.NewClientWithConfig(config)
+	resetOpenAIModelStates()
 	if getContentOpenAI(self, time.Now(), &AIContentPool) == nil {
 		self.Valid = true
 	} else {
@@ -216,31 +239,99 @@ func AISampleApped(s string) {
 	}
 }
 
+func configuredModels() []string {
+	models := GetOpenAIModels()
+	if len(models) == 0 {
+		return []string{openai.GPT4oMini}
+	}
+	return models
+}
+
 func getContentOpenAI(self *AIInstance, t time.Time, pool *[]string) (err error) {
-	prompt := make([]openai.ChatCompletionMessage, 0)
-	prompt = append(prompt, openai.ChatCompletionMessage{
+	models := configuredModels()
+	prompt := []openai.ChatCompletionMessage{{
 		Role:    openai.ChatMessageRoleUser,
 		Content: getPrompt(t),
+	}}
+	return rotateTryModels(models, func(model string) error {
+		return callOpenAIModel(model, prompt, self, pool)
 	})
+}
 
+// rotateTryModels 从 openaiNextIdx 起轮换；跳过退避中的模型；失败立即试下一个并单独退避
+func rotateTryModels(models []string, call func(string) error) error {
+	if len(models) == 0 {
+		return errors.New("no models")
+	}
+
+	openaiModelMu.Lock()
+	start := openaiNextIdx % len(models)
+	openaiModelMu.Unlock()
+
+	var lastErr error
+	tried := 0
+	now := time.Now()
+
+	for i := 0; i < len(models); i++ {
+		idx := (start + i) % len(models)
+		model := models[idx]
+
+		openaiModelMu.Lock()
+		st := modelStateLocked(model)
+		inBackoff := now.Before(st.nextRetry)
+		nextAt := st.nextRetry
+		openaiModelMu.Unlock()
+		if inBackoff {
+			fmt.Printf("skip model %s until %s\n", model, nextAt.Format("15:04:05"))
+			continue
+		}
+
+		tried++
+		err := call(model)
+		if err == nil {
+			openaiModelMu.Lock()
+			st = modelStateLocked(model)
+			st.failureDelay = openaiInitialBackoff
+			st.nextRetry = time.Time{}
+			openaiNextIdx = (idx + 1) % len(models)
+			openaiModelMu.Unlock()
+			return nil
+		}
+
+		lastErr = err
+		openaiModelMu.Lock()
+		st = modelStateLocked(model)
+		st.nextRetry = time.Now().Add(st.failureDelay)
+		fmt.Printf("model %s failed, next retry after %s (at %s)\n", model, st.failureDelay, st.nextRetry.Format("15:04:05"))
+		st.failureDelay *= 2
+		if st.failureDelay > openaiMaxBackoff {
+			st.failureDelay = openaiMaxBackoff
+		}
+		openaiModelMu.Unlock()
+	}
+
+	if tried == 0 {
+		return errors.New("all models in backoff")
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return errors.New("all models failed")
+}
+
+func callOpenAIModel(model string, prompt []openai.ChatCompletionMessage, self *AIInstance, pool *[]string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	req := openai.ChatCompletionRequest{
-		Model:    openai.GPT4oMini,
+		Model:    model,
 		Messages: prompt,
 		Stream:   false,
-	}
-	if model := GetOpenAIModel(); model != "" {
-		req.Model = model
 	}
 
 	reqJSON, _ := json.MarshalIndent(req, "", "  ")
 	fmt.Printf("即将发送的 JSON Payload:\n%s\n", string(reqJSON))
 
-	resp, err := openaiClient.CreateChatCompletion(
-		ctx,
-		req,
-	)
+	resp, err := openaiClient.CreateChatCompletion(ctx, req)
 	if err != nil {
 		e := &openai.APIError{}
 		if errors.As(err, &e) {
@@ -250,9 +341,7 @@ func getContentOpenAI(self *AIInstance, t time.Time, pool *[]string) (err error)
 				fmt.Printf("错误代码 (Code): %v\n", e.Code)
 				fmt.Printf("错误类型 (Type): %s\n", e.Type)
 				fmt.Printf("错误信息 (Message): %s\n", e.Message)
-
 				if e.Param != nil {
-					// 如果指针不为空，则解引用打印具体值
 					fmt.Printf("相关参数 (Param): %s\n", *e.Param)
 				} else {
 					fmt.Printf("相关参数 (Param): <null>\n")
@@ -263,7 +352,7 @@ func getContentOpenAI(self *AIInstance, t time.Time, pool *[]string) (err error)
 		} else {
 			fmt.Printf("Generic Error: %v\n", err)
 		}
-		return
+		return err
 	}
 
 	lines := strings.Split(resp.Choices[0].Message.Content, "\n")
@@ -275,7 +364,7 @@ func getContentOpenAI(self *AIInstance, t time.Time, pool *[]string) (err error)
 			fmt.Println(self.Name, "AI result add:", match[1], "to pool size:", len(*pool))
 		}
 	}
-	return err
+	return nil
 }
 
 func getPrompt(t time.Time) string {
