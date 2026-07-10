@@ -200,16 +200,21 @@
 					</div>
 					<div class="form-control">
 						<label class="label" for="openai_model">
-							<span class="label-text">OpenAI 模型</span>
-							<span class="label-text-alt">当前: {config.openai_model || 'gpt-4o-mini'}</span>
+							<span class="label-text">OpenAI 模型（可多个）</span>
+							<span class="label-text-alt"
+								>当前: {(config.openai_model || 'gpt-4o-mini').replace(/[\n\r;]+/g, ', ')}</span
+							>
 						</label>
-						<input
+						<textarea
 							id="openai_model"
 							bind:value={formData.openai_model}
-							type="text"
-							placeholder="留空不修改"
-							class="input input-bordered"
-						/>
+							placeholder={'每行一个模型，失败自动切换下一个\n例如:\ngpt-4o-mini\ngpt-4o'}
+							class="textarea textarea-bordered font-mono text-sm"
+							rows="4"
+						></textarea>
+						<label class="label" for="openai_model">
+							<span class="label-text-alt">留空不修改；多个模型会轮换调用，各自独立退避重试</span>
+						</label>
 					</div>
 				</div>
 			</div>

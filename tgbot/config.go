@@ -161,11 +161,36 @@ func GetOpenAIBaseURL() string {
 	return appConfig.OpenAIBaseURL
 }
 
-// GetOpenAIModel 获取 OpenAI 模型名称
+// GetOpenAIModel 获取 OpenAI 模型配置原文（可含多个，逗号/换行分隔）
 func GetOpenAIModel() string {
 	configMu.RLock()
 	defer configMu.RUnlock()
 	return appConfig.OpenAIModel
+}
+
+// parseOpenAIModels 将模型配置拆成列表（逗号、分号、换行分隔，去重保序）
+func parseOpenAIModels(raw string) []string {
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\r'
+	})
+	out := make([]string, 0, len(parts))
+	seen := make(map[string]bool, len(parts))
+	for _, p := range parts {
+		m := strings.TrimSpace(p)
+		if m == "" || seen[m] {
+			continue
+		}
+		seen[m] = true
+		out = append(out, m)
+	}
+	return out
+}
+
+// GetOpenAIModels 获取 OpenAI 模型列表
+func GetOpenAIModels() []string {
+	configMu.RLock()
+	defer configMu.RUnlock()
+	return parseOpenAIModels(appConfig.OpenAIModel)
 }
 
 // UpdateConfig 更新配置（部分更新）
