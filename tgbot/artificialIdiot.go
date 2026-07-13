@@ -2,15 +2,15 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
-
-	"math/rand/v2"
 
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -28,8 +28,20 @@ var AISamples []string = []string{
 	"胡萝卜玉米猪骨汤",
 }
 
-var promptDefault = "你是一个算命机器人，会随机给出一些老黄历词条，类似：[宜xxxxxxx][忌xxxxxxx]，词条范围包含但不限于与[今天的日期]、[现在的时间]相关的活动、[Ingress]游戏中的行为、衣服穿搭、发型发色、交通工具、饮食搭配、经典网络迷因、流行搞笑梗等等各种有趣的东西；其中，Ingress中的[名词]均使用英文。词条必须简短不含逗号，但是需要搞笑有趣、幽默讽刺。当今天是节日时，生成词条尽量与节日相关，生成词条不含“宜”或“忌”的前缀，但是需要保证词条加上“宜”或“忌”的前缀时都意思通顺，生成的词条均以大括号{}括住，请参考后面的生成词条示例，再生成13条词条。\n"
-var promptEnd = "请仅回答生成的词条，每个词条一行。"
+var defaultGoodSamples = []string{
+	"拒接领导电话", "翘班去钓鱼", "边砍圣诞树边刷AP", "投食减肥者", "变得不幸",
+	"橙色针织裙", "搭星舰去上班", "带猫猫参加IFS", "胡萝卜玉米猪骨汤", "给Portal贴膜",
+	"把XMP当烟花", "用ADA处理前任", "在Link上走钢丝", "给Scanner充电到忘记睡觉",
+	"把低电量当人生哲学", "穿拖鞋参加战术会议", "骑共享单车追稀有Portal",
+	"在咖啡里找XM", "把通勤路线画成Field", "和敌对阵营拼桌", "给背包做减法",
+	"在雨里更新Scanner", "把钥匙串当护身符", "给B8许愿", "假装看不见群消息",
+	"把午休献给Portal", "在地铁里规划大三角", "为一根Link熬夜", "把IFS当相亲局",
+	"用Jarvis解决选择困难", "被风吹乱战术发型", "给外卖备注阵营色", "在奶茶里加抵抗",
+	"把加班解释为刷AP", "对着地图假装很忙", "把雨伞当Portal天线", "给鞋带打战术结",
+	"把迷路称为实地勘测", "在凌晨维护社交能量", "给闹钟设置成Scanner提示音",
+}
+
+var promptDefault = "你是 Ingress 主题的老黄历词条生成器。词条范围包含与日期和小时相关的活动、Ingress 游戏行为、穿搭、交通、饮食、网络迷因和流行梗；Ingress 专有名词必须使用英文。词条应简短、搞笑且有讽刺感，不含“宜”或“忌”前缀、逗号或大括号，且不超过 64 个 Unicode 字符。每条必须同时能自然接在“宜”和“忌”之后。不要重复示例或同一批中的其他词条。\n"
 
 func GetChineseWeekday(t time.Time) string {
 	// 数组下标 0-6 分别对应周日到周六
@@ -47,20 +59,12 @@ type AIInstance struct {
 	Valid  bool
 }
 
-var AIContentPool []string
-var AINextHourPool []string
 var AIs []*AIInstance
 
-func AIContentPush(pool *[]string, s string) {
-	*pool = append(*pool, s)
-	for len(*pool) > 20 {
-		*pool = (*pool)[1:]
-	}
-}
-
 var aiContext, cancelAI = context.WithCancel(context.Background())
+var aiGenerationMu sync.Mutex
 
-// 每个模型独立退避；轮换下标跨次调用延续
+// 每个模型独立退避；配置顺序同时是调用优先级。
 type openaiModelState struct {
 	nextRetry    time.Time
 	failureDelay time.Duration
@@ -69,7 +73,6 @@ type openaiModelState struct {
 var (
 	openaiModelMu     sync.Mutex
 	openaiModelStates = map[string]*openaiModelState{}
-	openaiNextIdx     int
 )
 
 const (
@@ -81,7 +84,6 @@ func resetOpenAIModelStates() {
 	openaiModelMu.Lock()
 	defer openaiModelMu.Unlock()
 	openaiModelStates = make(map[string]*openaiModelState)
-	openaiNextIdx = 0
 }
 
 func modelStateLocked(name string) *openaiModelState {
@@ -108,68 +110,16 @@ func initAIs() {
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
 
-		lastHour := time.Now().Hour()
-
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
 				now := time.Now()
-				currentHour := now.Hour()
-				currentMinute := now.Minute()
-
-				// 1. 整点切换逻辑
-				if currentHour != lastHour {
-					fmt.Printf("New hour detected: %d (was %d). Switching AIContentPool.\n", currentHour, lastHour)
-					if len(AINextHourPool) > 0 {
-						AIContentPool = AINextHourPool
-						AINextHourPool = make([]string, 0)
-					} else {
-						// 如果预取失败了，整点至少清空旧的（过期的）
-						AIContentPool = make([]string, 0)
-					}
-					lastHour = currentHour
-				}
-
-				// 2. 触发决策逻辑
-				var targetPool *[]string
-				var targetTime time.Time
-				isPrefetch := false
-
-				if currentMinute == 59 {
-					// 59分进入预取模式
-					if len(AINextHourPool) < 5 {
-						targetPool = &AINextHourPool
-						targetTime = now.Add(time.Hour)
-						isPrefetch = true
-					}
-				} else {
-					// 常规模式：池不满 且 预取池为空；退避由各模型自行计算
-					if len(AIContentPool) < 5 && len(AINextHourPool) == 0 {
-						targetPool = &AIContentPool
-						targetTime = now
-					}
-				}
-
-				// 3. 执行更新
-				if targetPool != nil {
-					var success bool
-					for _, ai := range shuffle(AIs) {
-						if ai.Valid {
-							if err := ai.Update(ai, targetTime, targetPool); err == nil {
-								success = true
-								break
-							}
-						}
-					}
-
-					if success {
-						fmt.Printf("AI content updated successfully (Prefetch: %v) at %s\n", isPrefetch, now.Format("15:04:05"))
-					} else if isPrefetch {
-						fmt.Printf("Prefetch AI update failed at %s, will retry soon\n", now.Format("15:04:05"))
-					} else {
-						fmt.Printf("Regular AI update failed at %s (per-model backoff)\n", now.Format("15:04:05"))
+				pruneAIHourlyContent(now)
+				if aiContentNeedsRefill(now) {
+					if err := refreshAIContent(now); err != nil {
+						fmt.Printf("AI content refill failed at %s: %v\n", now.Format("15:04:05"), err)
 					}
 				}
 			}
@@ -177,11 +127,23 @@ func initAIs() {
 	}(aiContext)
 }
 
-func shuffle(arr []*AIInstance) []*AIInstance {
-	rand.Shuffle(len(arr), func(i, j int) {
-		arr[i], arr[j] = arr[j], arr[i]
-	})
-	return arr
+func refreshAIContent(t time.Time) error {
+	aiGenerationMu.Lock()
+	defer aiGenerationMu.Unlock()
+	if !aiContentNeedsRefill(t) {
+		return nil
+	}
+	for _, ai := range AIs {
+		if ai.Valid {
+			if err := ai.Update(ai, t, nil); err == nil {
+				fmt.Printf("AI content batch appended at %s\n", t.Format("15:04:05"))
+				return nil
+			} else {
+				return err
+			}
+		}
+	}
+	return errors.New("no valid AI provider")
 }
 
 func initOpenAI(self *AIInstance) {
@@ -197,7 +159,7 @@ func initOpenAI(self *AIInstance) {
 	}
 	openaiClient = openai.NewClientWithConfig(config)
 	resetOpenAIModelStates()
-	if getContentOpenAI(self, time.Now(), &AIContentPool) == nil {
+	if getContentOpenAI(self, time.Now(), nil) == nil {
 		self.Valid = true
 	} else {
 		self.Valid = false
@@ -221,14 +183,27 @@ func reloadAIConfig() {
 }
 
 func AIContentValid() bool {
-	return len(AIContentPool) > 0
+	aiContentMu.Lock()
+	defer aiContentMu.Unlock()
+	return len(aiHourlyContent[hourKey(time.Now())]) > 0
 }
 
 func AIContentPop() (result string) {
-	resultIdx := rand.IntN(len(AIContentPool))
-	result = AIContentPool[resultIdx]
-	AIContentPool = append(AIContentPool[:resultIdx], AIContentPool[resultIdx+1:]...)
-	fmt.Println("len:", len(AIContentPool), "result:", result)
+	aiContentMu.Lock()
+	defer aiContentMu.Unlock()
+	hour := hourKey(time.Now())
+	pool := aiHourlyContent[hour]
+	if len(pool) == 0 {
+		return ""
+	}
+	idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(pool))))
+	if err != nil {
+		return ""
+	}
+	resultIdx := int(idx.Int64())
+	result = pool[resultIdx]
+	aiHourlyContent[hour] = append(pool[:resultIdx], pool[resultIdx+1:]...)
+	fmt.Println("AI current-hour pool len:", len(aiHourlyContent[hour]), "result:", result)
 	return result
 }
 
@@ -254,27 +229,28 @@ func getContentOpenAI(self *AIInstance, t time.Time, pool *[]string) (err error)
 		Content: getPrompt(t),
 	}}
 	return rotateTryModels(models, func(model string) error {
-		return callOpenAIModel(model, prompt, self, pool)
+		entries, err := callOpenAIModel(model, prompt)
+		if err != nil {
+			return err
+		}
+		appendAIHourlyContent(entries)
+		recordAIResults(entries)
+		return nil
 	})
 }
 
-// rotateTryModels 从 openaiNextIdx 起轮换；跳过退避中的模型；失败立即试下一个并单独退避
+// rotateTryModels 始终从配置的首个模型开始；仅首选不可用时顺序 fallback。
 func rotateTryModels(models []string, call func(string) error) error {
 	if len(models) == 0 {
 		return errors.New("no models")
 	}
-
-	openaiModelMu.Lock()
-	start := openaiNextIdx % len(models)
-	openaiModelMu.Unlock()
 
 	var lastErr error
 	tried := 0
 	now := time.Now()
 
 	for i := 0; i < len(models); i++ {
-		idx := (start + i) % len(models)
-		model := models[idx]
+		model := models[i]
 
 		openaiModelMu.Lock()
 		st := modelStateLocked(model)
@@ -293,7 +269,6 @@ func rotateTryModels(models []string, call func(string) error) error {
 			st = modelStateLocked(model)
 			st.failureDelay = openaiInitialBackoff
 			st.nextRetry = time.Time{}
-			openaiNextIdx = (idx + 1) % len(models)
 			openaiModelMu.Unlock()
 			return nil
 		}
@@ -319,7 +294,7 @@ func rotateTryModels(models []string, call func(string) error) error {
 	return errors.New("all models failed")
 }
 
-func callOpenAIModel(model string, prompt []openai.ChatCompletionMessage, self *AIInstance, pool *[]string) error {
+func callOpenAIModel(model string, prompt []openai.ChatCompletionMessage) ([]AIRecentResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	req := openai.ChatCompletionRequest{
@@ -352,28 +327,85 @@ func callOpenAIModel(model string, prompt []openai.ChatCompletionMessage, self *
 		} else {
 			fmt.Printf("Generic Error: %v\n", err)
 		}
-		return err
+		return nil, err
 	}
 
-	lines := strings.Split(resp.Choices[0].Message.Content, "\n")
-	re := regexp.MustCompile(`\{(.+?)\}`)
-	for _, v := range lines {
-		match := re.FindStringSubmatch(v)
-		if len(match) > 0 {
-			AIContentPush(pool, match[1])
-			fmt.Println(self.Name, "AI result add:", match[1], "to pool size:", len(*pool))
-		}
+	if len(resp.Choices) == 0 {
+		return nil, errors.New("AI returned no choices")
 	}
-	return nil
+	entries, err := parseAIHourlyResults(resp.Choices[0].Message.Content, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	return entries, nil
 }
 
 func getPrompt(t time.Time) string {
-	sample := ""
-	for _, v := range AISamples {
-		sample += "{" + v + "} "
+	start := t.Truncate(time.Hour)
+	good := randomAIEntries(aiCuratedEntries("good"), 40)
+	for _, sample := range defaultGoodSamples {
+		if len(good) >= 40 {
+			break
+		}
+		good = append(good, sample)
 	}
-	fmt.Println("generate AI result with:\n", sample)
+	bad := randomAIEntries(aiCuratedEntries("bad"), 10)
+	defaultBad := []string{"吃饭", "睡觉", "开心", "努力工作", "一切顺利", "喝水", "刷手机", "出门", "休息", "加油"}
+	for _, sample := range defaultBad {
+		if len(bad) >= 10 {
+			break
+		}
+		bad = append(bad, sample)
+	}
 
-	p := promptDefault + sample + "\n现在是" + todayChineseDateTime(t) + "，" + promptEnd
-	return p
+	hours := make([]string, 0, aiBatchHours)
+	for i := 0; i < aiBatchHours; i++ {
+		hours = append(hours, hourKey(start.Add(time.Duration(i)*time.Hour)))
+	}
+	return fmt.Sprintf("%s\n当前时间是%s。请为以下每个小时各生成恰好 %d 条词条：%s。\n"+
+		"优质风格参考（可学习风格但禁止复用）：%s。\n"+
+		"负面示例（禁止模仿其平淡、泛化或无趣的风格）：%s。\n"+
+		"只输出 %d 行，严格格式为 [YYYY-MM-DD HH]{词条}；每个所列小时必须有 %d 行。",
+		promptDefault, todayChineseDateTime(t), aiEntriesPerHour, strings.Join(hours, "、"),
+		wrapAISamples(good), wrapAISamples(bad), aiBatchHours*aiEntriesPerHour, aiEntriesPerHour)
+}
+
+func wrapAISamples(samples []string) string {
+	out := make([]string, 0, len(samples))
+	for _, sample := range samples {
+		out = append(out, "{"+sample+"}")
+	}
+	return strings.Join(out, " ")
+}
+
+var aiHourlyResultPattern = regexp.MustCompile(`(?m)^\s*\[(\d{4}-\d{2}-\d{2} \d{2})\]\{([^{}\r\n]+)\}\s*$`)
+
+func parseAIHourlyResults(content string, t time.Time) ([]AIRecentResult, error) {
+	expected := make(map[string]bool, aiBatchHours)
+	start := t.Truncate(time.Hour)
+	for i := 0; i < aiBatchHours; i++ {
+		expected[hourKey(start.Add(time.Duration(i)*time.Hour))] = true
+	}
+	perHour := make(map[string][]AIRecentResult, aiBatchHours)
+	seen := make(map[string]bool)
+	for _, match := range aiHourlyResultPattern.FindAllStringSubmatch(content, -1) {
+		hour, text := match[1], strings.TrimSpace(match[2])
+		if !expected[hour] || text == "" || len([]rune(text)) > 64 || seen[hour+"\x00"+text] {
+			continue
+		}
+		seen[hour+"\x00"+text] = true
+		if len(perHour[hour]) < aiEntriesPerHour {
+			perHour[hour] = append(perHour[hour], AIRecentResult{
+				Text: text, Hour: hour, GeneratedAt: time.Now().Format(gTimeFormat),
+			})
+		}
+	}
+	entries := make([]AIRecentResult, 0, aiBatchHours*aiEntriesPerHour)
+	for hour := range expected {
+		if len(perHour[hour]) < aiEntriesPerHour {
+			return nil, fmt.Errorf("AI returned only %d valid entries for %s", len(perHour[hour]), hour)
+		}
+		entries = append(entries, perHour[hour]...)
+	}
+	return entries, nil
 }

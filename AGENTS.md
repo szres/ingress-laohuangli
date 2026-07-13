@@ -28,11 +28,12 @@
 ### 关键模块
 
 - **`laohuangli.go`** — 核心引擎：词条库加载、加权均衡随机抽取、模板渲染、每日缓存、今日指引生成
-- **`artificialIdiot.go`** — AI 内容生成：OpenAI API 调用、内容池管理（整点切换 + 预取）、prompt 构造；支持 `reloadAIConfig()` 热重载；`openai_model` 可配置多个模型（逗号/换行分隔），调用时轮换，失败立即切下一模型，各模型独立指数退避（30s→16min）
+- **`artificialIdiot.go`** — AI 内容生成：OpenAI API 调用、6 小时分桶内容池和 60 条批量 prompt 构造；支持 `reloadAIConfig()` 热重载；`openai_model` 可配置多个模型（逗号/换行分隔），按配置优先级调用，首选不可用时才 fallback，各模型独立指数退避（30s→16min）
+- **`ai_curation.go`** — AI 词条管理：按小时内容池、最近 100 条生成结果及 good/bad 长期样本池的 scribble 持久化、并发保护和样本抽样
 - **`config.go`** — 配置管理：从 scribble DB 读写配置，首次启动从环境变量初始化，支持运行时更新；Bot Token 和 Admin ID 变更后通过 `restartBot()` 热重载，无需手动重启。新增 `WebDomain` 字段用于 Webhook 域名配置；`GetOpenAIModels()` 解析多模型列表
-- **`api.go`** — Fiber 路由注册：公开端点（`/api/today`、`/api/cache`、`/api/templates`、`/api/entries`，`BrowserOnlyMiddleware` Sec-Fetch-Site 校验 + 速率限制 5 次/分钟/IP 双重防护）、认证端点（`/api/auth/login`）、管理端点（`/api/admin/config`、`/api/admin/logs`、`/api/admin/tokens`）、用户统计端点（`/api/user/:id/stats`）、Webhook 端点（`/webhook`）、SPA fallback（`/*`）。使用 Fiber 中间件做 JWT 认证、API Token 认证、浏览器校验和速率限制
+- **`api.go`** — Fiber 路由注册：公开端点（`/api/today`、`/api/cache`、`/api/templates`、`/api/entries`，`BrowserOnlyMiddleware` Sec-Fetch-Site 校验 + 速率限制 5 次/分钟/IP 双重防护）、认证端点（`/api/auth/login`）、管理端点（配置、日志、API Token、AI 结果标注和词条库）、用户统计端点（`/api/user/:id/stats`）、Webhook 端点（`/webhook`）、SPA fallback（`/*`）。使用 Fiber 中间件做 JWT 认证、API Token 认证、浏览器校验和速率限制
 - **`apiext.go`** — API Token 管理与用户统计：Token CRUD（生成/删除/列表/验证）、`APITokenMiddleware` 中间件、用户统计引擎（全量扫描 history + 增量更新）、统计缓存（内存 + scribble DB `datas/user_stats`）。`expireUserStatsDaily()` 在每日零点清理过期统计，`updateUserStatsOnFortune()` 在算命成功后增量更新
-- **`main.go`** — 应用入口：Fiber app 初始化、`go:embed` 嵌入前端静态文件、Telegram Bot 启动（Webhook 或 Long Polling 降级）、启动时加载 API Token 和用户统计缓存
+- **`main.go`** — 应用入口：Fiber app 初始化、`go:embed` 嵌入前端静态文件、Telegram Bot 启动（Webhook 或 Long Polling 降级）、启动时加载 API Token、用户统计和 AI 词条库缓存
 - **`logbuffer.go`** — 日志缓冲：内存环形缓冲区 + 文件持久化，支持通过 API 远程查看日志
 - **`nominate.go`** — 词条提名与投票系统：赞成/反对、快速通过/否决、相似度查重（Jaro 算法）
 - **`chats.go`** — Telegram 私聊状态机（IDLE → NOMINATE）、命令路由、管理员权限
@@ -65,7 +66,7 @@
 - **样式**：TailwindCSS + DaisyUI 组件库
 - **代码规范**：Prettier + ESLint（`npm run lint` / `npm run format`）
 - **数据获取**：通过 `+page.js` 客户端 load 函数调用 Go 后端 API（`/api/cache`、`/api/templates`、`/api/entries`），API 路径为相对路径（同源）
-- **管理后台**：`/login` 登录页 + `/admin` 管理路由组（配置编辑、日志查看、API Token 管理），通过 localStorage 中的 JWT token 认证，客户端路由守卫（`+layout.js`）检查 token 有效性，未登录自动重定向；AI 模型支持多行输入（每行一个）
+- **管理后台**：`/login` 登录页 + `/admin` 管理路由组（配置编辑、日志查看、API Token、AI 结果标注和 good/bad 词条库管理），通过 localStorage 中的 JWT token 认证，客户端路由守卫（`+layout.js`）检查 token 有效性，未登录自动重定向；AI 模型支持多行输入（每行一个）
 - **SSR**：全局禁用（`+layout.js` 中 `export const ssr = false`）
 
 ### 部署与构建
@@ -83,8 +84,9 @@
 - **词条长度**：单条提名不超过 **64 个 Unicode 字符**
 - **提名限制**：每用户同时进行中的提名不超过 **5 条**
 - **投票规则**：≥5 赞成票且赞成率 >66% 为通过；≥7 票且赞成率 >75% 为快速通过；≥5 票且反对多于赞成 为快速否决
-- **AI 内容池**：每小时刷新，池上限 20 条，常规模式池 <5 时触发更新，59 分进入预取模式
-- **AI 多模型**：`openai_model` 支持多个模型（逗号/分号/换行分隔）；后端轮换调用，报错立即尝试下一个；每个模型的重试退避单独计算（初始 30s，翻倍至上限 16min）
+- **AI 内容池**：每次从当前小时起生成连续 6 小时、每小时 10 条，共 60 条；当前和下一小时剩余总数少于 3 时异步追加同规格批次；仅发放当前小时词条，过期桶会清理
+- **AI 多模型**：`openai_model` 支持多个模型（逗号/分号/换行分隔）；配置顺序即优先级，首选失败或退避时才依次 fallback；每个模型的重试退避单独计算（初始 30s，翻倍至上限 16min）
+- **AI 质量样本**：最近 100 条已接受结果持久化；管理员可将词条互斥标记为 good/bad。生成时随机取最多 40 条 good 和 10 条 bad，数量不足时以默认样本补齐
 - **今日缓存**：每日零点自动失效，缓存结果按用户 ID 存储，同一用户当天结果不变
 
 ## ⚠️ 自我进化约束（Critical Self-Sync Rule）
