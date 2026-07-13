@@ -146,6 +146,49 @@ func handleGetLogs(c fiber.Ctx) error {
 	return c.JSON(fiber.Map{"lines": lines})
 }
 
+func handleGetAIResults(c fiber.Ctx) error {
+	return c.JSON(fiber.Map{
+		"results": recentAIResults(),
+		"labels":  aiCuratedLabels(),
+	})
+}
+
+func handleLabelAIResult(c fiber.Ctx) error {
+	var req struct {
+		Text string `json:"text"`
+		Kind string `json:"kind"`
+	}
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "请求格式错误"})
+	}
+	if err := labelAIEntry(req.Text, req.Kind); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"status": "ok"})
+}
+
+func handleGetAICurated(c fiber.Ctx) error {
+	kind := c.Params("kind")
+	if kind != "good" && kind != "bad" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "无效词条池"})
+	}
+	return c.JSON(fiber.Map{"entries": aiCuratedEntries(kind)})
+}
+
+func handleDeleteAICurated(c fiber.Ctx) error {
+	kind := c.Params("kind")
+	var req struct {
+		Text string `json:"text"`
+	}
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "请求格式错误"})
+	}
+	if !deleteAICuratedEntry(req.Text, kind) {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "词条不存在或词条池无效"})
+	}
+	return c.JSON(fiber.Map{"status": "ok"})
+}
+
 // BrowserOnlyMiddleware Sec-Fetch-Site 浏览器校验（Forbidden Header，JS 无法伪造）
 func BrowserOnlyMiddleware(c fiber.Ctx) error {
 	secFetchSite := c.Get("Sec-Fetch-Site")
@@ -205,6 +248,10 @@ func SetupRoutes(app *fiber.App) {
 	app.Get("/api/admin/tokens", AuthMiddleware, handleListTokens)
 	app.Post("/api/admin/tokens", AuthMiddleware, handleCreateToken)
 	app.Delete("/api/admin/tokens/:id", AuthMiddleware, handleDeleteToken)
+	app.Get("/api/admin/ai/results", AuthMiddleware, handleGetAIResults)
+	app.Put("/api/admin/ai/results/label", AuthMiddleware, handleLabelAIResult)
+	app.Get("/api/admin/ai/curated/:kind", AuthMiddleware, handleGetAICurated)
+	app.Delete("/api/admin/ai/curated/:kind", AuthMiddleware, handleDeleteAICurated)
 
 	// 用户统计 API（需要 API Token 认证）
 	app.Get("/api/user/:id/stats", APITokenMiddleware, handleUserStats)

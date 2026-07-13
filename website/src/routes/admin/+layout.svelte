@@ -18,6 +18,12 @@
 			<li>
 				<a href="/admin/tokens" class:active={currentPath === '/admin/tokens'}> 🔑 API Token </a>
 			</li>
+			<li>
+				<a href="/admin/ai-results" class:active={currentPath === '/admin/ai-results'}> ✨ AI 结果 </a>
+			</li>
+			<li>
+				<a href="/admin/ai-library" class:active={currentPath === '/admin/ai-library'}> 📚 AI 词条库 </a>
+			</li>
 		</ul>
 		<div class="divider"></div>
 		<a href="/" class="btn btn-ghost btn-sm">← 返回首页</a>

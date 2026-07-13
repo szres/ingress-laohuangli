@@ -50,7 +50,6 @@
 	];
 	const exampleIdx = Math.floor(Math.random() * exampleSentences.length);
 	let sentence = exampleSentences[exampleIdx];
-	let sentenceDepth = 1;
 	let templateResult = '-';
 	let templateSlice = [];
 	let errTitle = '';
@@ -92,7 +91,7 @@
 		error = false;
 		let templateReplaced = 0;
 		const templateReplace = (_, name) => {
-			if (!templates.hasOwnProperty(name)) {
+			if (!Object.prototype.hasOwnProperty.call(templates, name)) {
 				error = true;
 				showError('错误', '不存在 {{' + name + '}} 模板');
 				return '{{' + name + '}}';
@@ -106,7 +105,7 @@
 		};
 		templateSlice = [];
 		templateResult = str.replaceAll(templatesRegexp, templateReplace);
-		[...templateResult.matchAll(/\[?([^\[\]]+)\]?/g)].forEach((match) => {
+		[...templateResult.matchAll(/\[?([^[\]]+)\]?/g)].forEach((match) => {
 			// console.log(match)
 			templateSlice.push({
 				isTemplate: match[1].length !== match[0].length ? true : false,
@@ -119,7 +118,6 @@
 			showError('错误', '词条使用了超过 4 个模板');
 		}
 		if (!error) {
-			sentenceDepth = getDepthOfEntry(str);
 			roller.start();
 		} else {
 			roller.stop();

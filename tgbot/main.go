@@ -68,6 +68,7 @@ func SetupApp() {
 	// 加载 API Token 和用户统计缓存
 	loadAPITokens()
 	loadUserStats()
+	loadAIContentStore()
 
 	// 从配置中读取运行时变量
 	gToken = GetBotToken()

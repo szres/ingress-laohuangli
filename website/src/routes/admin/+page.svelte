@@ -208,12 +208,12 @@
 						<textarea
 							id="openai_model"
 							bind:value={formData.openai_model}
-							placeholder={'每行一个模型，失败自动切换下一个\n例如:\ngpt-4o-mini\ngpt-4o'}
+							placeholder={'每行一个模型，按顺序优先调用，失败才切换\n例如:\ngpt-4o-mini\ngpt-4o'}
 							class="textarea textarea-bordered font-mono text-sm"
 							rows="4"
 						></textarea>
 						<label class="label" for="openai_model">
-							<span class="label-text-alt">留空不修改；多个模型会轮换调用，各自独立退避重试</span>
+							<span class="label-text-alt">留空不修改；首个模型优先，失败时按顺序 fallback，各自独立退避重试</span>
 						</label>
 					</div>
 				</div>

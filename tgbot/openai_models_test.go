@@ -31,15 +31,14 @@ func TestParseOpenAIModels(t *testing.T) {
 	}
 }
 
-// ponytail: 不打真实 API；验证跳过退避模型、失败立即换下一个
-func TestOpenAIModelRotationBackoff(t *testing.T) {
+// ponytail: 不打真实 API；验证首选退避时才 fallback，失败立即换下一个。
+func TestOpenAIModelPriorityBackoff(t *testing.T) {
 	resetOpenAIModelStates()
 	models := []string{"m1", "m2", "m3"}
 
 	openaiModelMu.Lock()
 	st1 := modelStateLocked("m1")
 	st1.nextRetry = time.Now().Add(time.Hour)
-	openaiNextIdx = 0
 	openaiModelMu.Unlock()
 
 	order := make([]string, 0)
@@ -59,13 +58,25 @@ func TestOpenAIModelRotationBackoff(t *testing.T) {
 
 	openaiModelMu.Lock()
 	defer openaiModelMu.Unlock()
-	if openaiNextIdx != 0 { // (m3 idx 2 + 1) % 3 == 0
-		t.Fatalf("openaiNextIdx=%d want 0", openaiNextIdx)
-	}
 	if !modelStateLocked("m2").nextRetry.After(time.Now()) {
 		t.Fatal("m2 should be in backoff after failure")
 	}
 	if !modelStateLocked("m3").nextRetry.IsZero() {
 		t.Fatal("m3 backoff should be cleared on success")
+	}
+}
+
+func TestOpenAIModelPriorityUsesFirstHealthyModel(t *testing.T) {
+	resetOpenAIModelStates()
+	order := make([]string, 0)
+	err := rotateTryModels([]string{"m1", "m2"}, func(model string) error {
+		order = append(order, model)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if len(order) != 1 || order[0] != "m1" {
+		t.Fatalf("order=%v want [m1]", order)
 	}
 }
