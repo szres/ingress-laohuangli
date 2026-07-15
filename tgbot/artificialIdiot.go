@@ -29,19 +29,70 @@ var AISamples []string = []string{
 }
 
 var defaultGoodSamples = []string{
-	"拒接领导电话", "翘班去钓鱼", "边砍圣诞树边刷AP", "投食减肥者", "变得不幸",
-	"橙色针织裙", "搭星舰去上班", "带猫猫参加IFS", "胡萝卜玉米猪骨汤", "给Portal贴膜",
-	"把XMP当烟花", "用ADA处理前任", "在Link上走钢丝", "给Scanner充电到忘记睡觉",
-	"把低电量当人生哲学", "穿拖鞋参加战术会议", "骑共享单车追稀有Portal",
-	"在咖啡里找XM", "把通勤路线画成Field", "和敌对阵营拼桌", "给背包做减法",
-	"在雨里更新Scanner", "把钥匙串当护身符", "给B8许愿", "假装看不见群消息",
+	// Ingress 向（术语用法必须真实可信）
+	"边砍圣诞树边刷AP", "带猫猫参加IFS", "给Scanner贴钢化膜",
+	"把XMP当烟花", "用ADA处理前任", "为一条跨城Link绕路三公里", "给Scanner充电到忘记睡觉",
+	"骑共享单车追稀有Portal", "绕远路收集XM", "把通勤路线画成Field", "和敌对阵营拼桌",
+	"在雨里更新Scanner", "把钥匙串当护身符", "对着P8许愿",
 	"把午休献给Portal", "在地铁里规划大三角", "为一根Link熬夜", "把IFS当相亲局",
-	"用Jarvis解决选择困难", "被风吹乱战术发型", "给外卖备注阵营色", "在奶茶里加抵抗",
-	"把加班解释为刷AP", "对着地图假装很忙", "把雨伞当Portal天线", "给鞋带打战术结",
-	"把迷路称为实地勘测", "在凌晨维护社交能量", "给闹钟设置成Scanner提示音",
+	"用Jarvis解决选择困难", "给外卖备注阵营色", "在奶茶里加抵抗",
+	"把加班解释为刷AP", "冒雨出门补Resonator", "给闹钟设置成Scanner提示音",
+	// 非 Ingress 向（日常恶搞与流行梗）
+	"拒接领导电话", "翘班去钓鱼", "投食减肥者", "变得不幸",
+	"橙色针织裙", "搭星舰去上班", "胡萝卜玉米猪骨汤",
+	"把低电量当人生哲学", "穿拖鞋参加战术会议", "假装看不见群消息",
+	"被风吹乱战术发型", "对着地图假装很忙", "给鞋带打战术结",
+	"把迷路称为实地勘测", "在凌晨维护社交能量", "在工位假装听懂了",
+	"给周一发好人卡", "对镜子练习已读不回", "把体检报告当盲盒拆",
+	"给猫排队道歉", "在地铁抢到座位却坐过站", "用外卖红包决定晚餐",
 }
 
-var promptDefault = "你是 Ingress 主题的老黄历词条生成器。词条范围包含与日期和小时相关的活动、Ingress 游戏行为、穿搭、交通、饮食、网络迷因和流行梗；Ingress 专有名词必须使用英文。词条应简短、搞笑且有讽刺感，不含“宜”或“忌”前缀、逗号或大括号，且不超过 64 个 Unicode 字符。每条必须同时能自然接在“宜”和“忌”之后。不要重复示例或同一批中的其他词条。\n"
+var defaultBadSamples = []string{
+	// 平淡泛化
+	"吃饭", "睡觉", "开心", "努力工作", "一切顺利", "喝水", "刷手机", "出门", "休息", "加油",
+	// 术语使用错误（Portal 不可移动、Link 是虚拟的、XMP 是一次性武器）
+	"捡起一个Portal带回家", "在Link上晾衣服", "给XMP充电",
+}
+
+var promptDefault = `你是「Ingress老黄历」的词条生成器，为 Ingress 玩家生成每日算命用的黄历词条。
+
+【输出格式】
+- 每条词条是一个可以直接接在“宜”或“忌”之后的短语，两种接法都必须自然通顺。
+- 不含“宜”“忌”前缀，不含逗号、大括号、引号和句号，不超过 64 个 Unicode 字符。
+- 不要复述示例，同一批内不得重复或高度相似。
+
+【题材配比（硬性要求）】
+- 每个小时的词条中，至少 1/3 必须与 Ingress 完全无关，一个 Ingress 术语都不能出现。
+- 无关条目写日常生活恶搞、职场社畜梗、网络流行梗、食物、穿搭、天气、交通等。
+
+【时间贴合（硬性要求）】
+- 每个小时的词条要贴合该小时的典型生活场景：清晨写早餐/通勤/起床气，中午写午饭/午休，下午写摸鱼/下午茶/犯困，傍晚写下班/晚饭，深夜写熬夜/夜宵/失眠，凌晨写梦游/赶末班车后的绝望等。
+- 严禁时间错位：下午的词条不能出现早餐，早晨的词条不能出现夜宵，工作日白天才有摸鱼梗。
+- 注意所列小时的日期是工作日还是周末，周末不写通勤打卡类内容。
+- 如果所列日期恰逢中国法定节假日、二十四节气、传统节日或知名网络节日（如程序员节、双十一），当天应有部分词条与之相关。
+
+【Ingress 术语表】涉及 Ingress 的词条必须符合以下真实语义，可以夸张搞笑但不能张冠李戴；专有名词一律用英文：
+- Scanner：游戏 App 本体，运行时费电费流量。
+- Portal：绑定现实地标（雕塑、涂鸦、建筑等）的虚拟据点，位置固定，玩家要走到附近才能操作。
+- hack：对 Portal 取物资的动作，有冷却时间；Glyph Hack 是画符号小游戏，画得好物资更多。
+- Resonator：部署在 Portal 上的共振器，共 8 个槽位；全部被打掉后 Portal 变中立可被占领。
+- Recharge：消耗 XM 给 Resonator 补能量，持有对应 Portal Key 时可远程充电。
+- XM：散布在地图上的能量物质，路过自动收集，Scanner 的一切操作都消耗 XM。
+- XMP Burster：一次性攻击武器，用来炸敌方 Resonator；Ultra Strike 是小范围精准版。
+- Portal Key：Portal 的钥匙，是连 Link 和远程充电的前提。
+- Link：用 Key 在两个己方 Portal 之间连出的能量线，不同 Link 不能交叉；它是虚拟的线，人不能碰到。
+- Field：三条 Link 围成的三角形控制场，按覆盖人口获得 MU；超大 Field 俗称 BAF。
+- AP：经验值；等级上限 L16，满级后可 Recursion（转生）。
+- 阵营：蓝色 Resistance（抵抗军）与绿色 Enlightened（启蒙军）。
+- ADA Refactor：把 Portal 翻转成蓝色；JARVIS Virus：把 Portal 翻转成绿色。
+- Drone：无人机，可远程逐格移动并 hack。
+- Mission：任务，完成后获得拼图奖章；Sojourner：连续每日 hack 的奖章。
+- IFS（First Saturday）：每月第一个周六的官方线下聚会；Anomaly：官方大型线下对抗活动。
+
+【风格】
+- 简短、荒诞、有讽刺感；幽默来自生活观察和错位联想，不靠堆砌术语。
+- 好词条画面感强且具体（如“把通勤路线画成Field”），坏词条平淡空泛（如“努力工作”）。
+`
 
 func GetChineseWeekday(t time.Time) string {
 	// 数组下标 0-6 分别对应周日到周六
@@ -340,34 +391,37 @@ func callOpenAIModel(model string, prompt []openai.ChatCompletionMessage) ([]AIR
 	return entries, nil
 }
 
+// 注入上限：good 大而全（正面示例越多越好），bad 刻意压小——
+// 反例数量大了会污染上下文（模型可能学走错误搭配），术语正确性靠术语表兜底。
+const (
+	aiGoodSampleCap = 60
+	aiBadSampleCap  = 12
+)
+
 func getPrompt(t time.Time) string {
 	start := t.Truncate(time.Hour)
-	good := randomAIEntries(aiCuratedEntries("good"), 40)
-	for _, sample := range defaultGoodSamples {
-		if len(good) >= 40 {
-			break
-		}
-		good = append(good, sample)
-	}
-	bad := randomAIEntries(aiCuratedEntries("bad"), 10)
-	defaultBad := []string{"吃饭", "睡觉", "开心", "努力工作", "一切顺利", "喝水", "刷手机", "出门", "休息", "加油"}
-	for _, sample := range defaultBad {
-		if len(bad) >= 10 {
-			break
-		}
-		bad = append(bad, sample)
+	// 默认样本始终全量保留（分布是人工配平的），标注池随机抽样到上限。
+	good := uniqueAITexts(append(randomAIEntries(aiCuratedEntries("good"), aiGoodSampleCap), defaultGoodSamples...))
+	bad := uniqueAITexts(append(randomAIEntries(aiCuratedEntries("bad"), aiBadSampleCap), defaultBadSamples...))
+	recent := recentAIResults()
+	noRepeat := make([]string, 0, len(recent))
+	for _, r := range recent {
+		noRepeat = append(noRepeat, r.Text)
 	}
 
 	hours := make([]string, 0, aiBatchHours)
 	for i := 0; i < aiBatchHours; i++ {
 		hours = append(hours, hourKey(start.Add(time.Duration(i)*time.Hour)))
 	}
+	nonIngressMin := (aiEntriesPerHour + 2) / 3
 	return fmt.Sprintf("%s\n当前时间是%s。请为以下每个小时各生成恰好 %d 条词条：%s。\n"+
-		"优质风格参考（可学习风格但禁止复用）：%s。\n"+
-		"负面示例（禁止模仿其平淡、泛化或无趣的风格）：%s。\n"+
-		"只输出 %d 行，严格格式为 [YYYY-MM-DD HH]{词条}；每个所列小时必须有 %d 行。",
+		"优质示例（学习其风格和幽默方式，禁止复用原句）：%s。\n"+
+		"劣质示例（包含风格平淡泛化的和 Ingress 术语使用错误的，均禁止模仿）：%s。\n"+
+		"最近已生成过的词条（禁止重复或高度相似）：%s。\n"+
+		"只输出 %d 行，严格格式为 [YYYY-MM-DD HH]{词条}；每个所列小时必须有 %d 行，其中至少 %d 行完全不含 Ingress 元素。",
 		promptDefault, todayChineseDateTime(t), aiEntriesPerHour, strings.Join(hours, "、"),
-		wrapAISamples(good), wrapAISamples(bad), aiBatchHours*aiEntriesPerHour, aiEntriesPerHour)
+		wrapAISamples(good), wrapAISamples(bad), wrapAISamples(noRepeat),
+		aiBatchHours*aiEntriesPerHour, aiEntriesPerHour, nonIngressMin)
 }
 
 func wrapAISamples(samples []string) string {
