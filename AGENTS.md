@@ -28,8 +28,8 @@
 ### 关键模块
 
 - **`laohuangli.go`** — 核心引擎：词条库加载、加权均衡随机抽取、模板渲染、每日缓存、今日指引生成
-- **`artificialIdiot.go`** — AI 内容生成：OpenAI API 调用、6 小时分桶内容池和 60 条批量 prompt 构造；支持 `reloadAIConfig()` 热重载；`openai_model` 可配置多个模型（逗号/换行分隔），按配置优先级调用，首选不可用时才 fallback，各模型独立指数退避（30s→16min）
-- **`ai_curation.go`** — AI 词条管理：按小时内容池、最近 100 条生成结果及 good/bad 长期样本池的 scribble 持久化、并发保护和样本抽样
+- **`artificialIdiot.go`** — AI 内容生成：OpenAI API 调用、6 小时分桶内容池和 60 条批量 prompt 构造；prompt 内置 Ingress 术语表（约束术语真实用法）、题材配比（每小时至少 1/3 非 Ingress 词条）和时间贴合约束（词条须匹配所在小时的生活场景、关联节假日），good/bad 标注池限额抽样注入（60/12）+ 默认样本全量，附最近 100 条生成记录做去重；支持 `reloadAIConfig()` 热重载；`openai_model` 可配置多个模型（逗号/换行分隔），按配置优先级调用，首选不可用时才 fallback，各模型独立指数退避（30s→16min）
+- **`ai_curation.go`** — AI 词条管理：按小时内容池、最近 100 条生成结果及 good/bad 长期样本池的 scribble 持久化和并发保护
 - **`config.go`** — 配置管理：从 scribble DB 读写配置，首次启动从环境变量初始化，支持运行时更新；Bot Token 和 Admin ID 变更后通过 `restartBot()` 热重载，无需手动重启。新增 `WebDomain` 字段用于 Webhook 域名配置；`GetOpenAIModels()` 解析多模型列表
 - **`api.go`** — Fiber 路由注册：公开端点（`/api/today`、`/api/cache`、`/api/templates`、`/api/entries`，`BrowserOnlyMiddleware` Sec-Fetch-Site 校验 + 速率限制 5 次/分钟/IP 双重防护）、认证端点（`/api/auth/login`）、管理端点（配置、日志、API Token、AI 结果标注和词条库）、用户统计端点（`/api/user/:id/stats`）、Webhook 端点（`/webhook`）、SPA fallback（`/*`）。使用 Fiber 中间件做 JWT 认证、API Token 认证、浏览器校验和速率限制
 - **`apiext.go`** — API Token 管理与用户统计：Token CRUD（生成/删除/列表/验证）、`APITokenMiddleware` 中间件、用户统计引擎（全量扫描 history + 增量更新）、统计缓存（内存 + scribble DB `datas/user_stats`）。`expireUserStatsDaily()` 在每日零点清理过期统计，`updateUserStatsOnFortune()` 在算命成功后增量更新
@@ -86,7 +86,8 @@
 - **投票规则**：≥5 赞成票且赞成率 >66% 为通过；≥7 票且赞成率 >75% 为快速通过；≥5 票且反对多于赞成 为快速否决
 - **AI 内容池**：每次从当前小时起生成连续 6 小时、每小时 10 条，共 60 条；当前和下一小时剩余总数少于 3 时异步追加同规格批次；仅发放当前小时词条，过期桶会清理
 - **AI 多模型**：`openai_model` 支持多个模型（逗号/分号/换行分隔）；配置顺序即优先级，首选失败或退避时才依次 fallback；每个模型的重试退避单独计算（初始 30s，翻倍至上限 16min）
-- **AI 质量样本**：最近 100 条已接受结果持久化；管理员可将词条互斥标记为 good/bad。生成时随机取最多 40 条 good 和 10 条 bad，数量不足时以默认样本补齐
+- **AI 质量样本**：最近 100 条已接受结果持久化；管理员可将词条互斥标记为 good/bad。生成时默认样本全量注入，标注池随机抽样注入（good ≤ 60、bad ≤ 12，反例压小以免污染上下文），并附最近 100 条生成记录要求禁止重复
+- **AI 题材与术语**：prompt 硬性要求每小时词条至少 1/3 完全不含 Ingress 元素（日常恶搞/流行梗）；内置 Ingress 术语表约束动作表述必须符合术语真实语义；词条须贴合对应小时的生活场景（严禁时间错位）并关联节假日/节气等特殊日期
 - **今日缓存**：每日零点自动失效，缓存结果按用户 ID 存储，同一用户当天结果不变
 
 ## ⚠️ 自我进化约束（Critical Self-Sync Rule）
