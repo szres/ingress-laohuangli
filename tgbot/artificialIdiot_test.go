@@ -29,6 +29,7 @@ func TestGetPromptConstraints(t *testing.T) {
 		"至少 4 行完全不含 Ingress 元素", // 每小时 10 条时非 Ingress 下限
 		"Ingress 术语表",
 		"XMP Burster",
+		"最长不超过 12 个词",
 		"时间贴合",
 		"严禁时间错位",
 		"节假日",

@@ -52,13 +52,18 @@ var defaultBadSamples = []string{
 	"吃饭", "睡觉", "开心", "努力工作", "一切顺利", "喝水", "刷手机", "出门", "休息", "加油",
 	// 术语使用错误（Portal 不可移动、Link 是虚拟的、XMP 是一次性武器）
 	"捡起一个Portal带回家", "在Link上晾衣服", "给XMP充电",
+	// 冗长铺陈（真实产出的坏例：写成了句子而不是短语）
+	"看着下班人群汇聚成流幻想这是一场线下Anomaly的集结",
+	"因为网络波动而导致连线失败从而被迫重新构建部署方案",
 }
 
 var promptDefault = `你是「Ingress老黄历」的词条生成器，为 Ingress 玩家生成每日算命用的黄历词条。
 
 【输出格式】
 - 每条词条是一个可以直接接在“宜”或“忌”之后的短语，两种接法都必须自然通顺。
-- 不含“宜”“忌”前缀，不含逗号、大括号、引号和句号，不超过 64 个 Unicode 字符。
+- 词条是短语不是句子。长度按词计算：一个英文单词算 1 个词，每 2 个汉字算 1 个词；以 3～7 个词为佳，最长不超过 12 个词，超长作废。
+- 禁止“因为/所以/从而/导致”式的因果长句，禁止层层修饰铺陈；一个动作一个意象就够。
+- 不含“宜”“忌”前缀，不含逗号、大括号、引号和句号。
 - 不要复述示例，同一批内不得重复或高度相似。
 
 【题材配比（硬性要求）】
@@ -91,7 +96,8 @@ var promptDefault = `你是「Ingress老黄历」的词条生成器，为 Ingres
 
 【风格】
 - 简短、荒诞、有讽刺感；幽默来自生活观察和错位联想，不靠堆砌术语。
-- 好词条画面感强且具体（如“把通勤路线画成Field”），坏词条平淡空泛（如“努力工作”）。
+- 好词条画面感强且具体（如“把通勤路线画成Field”），坏词条平淡空泛（如“努力工作”）或冗长啰嗦（如“看着下班人群汇聚成流幻想这是一场线下Anomaly的集结”）。
+- 短才好笑：写完自问能不能砍掉一半字还保留笑点，能砍就砍。
 `
 
 func GetChineseWeekday(t time.Time) string {
@@ -416,7 +422,7 @@ func getPrompt(t time.Time) string {
 	nonIngressMin := (aiEntriesPerHour + 2) / 3
 	return fmt.Sprintf("%s\n当前时间是%s。请为以下每个小时各生成恰好 %d 条词条：%s。\n"+
 		"优质示例（学习其风格和幽默方式，禁止复用原句）：%s。\n"+
-		"劣质示例（包含风格平淡泛化的和 Ingress 术语使用错误的，均禁止模仿）：%s。\n"+
+		"劣质示例（包含风格平淡泛化的、Ingress 术语使用错误的和冗长啰嗦的，均禁止模仿）：%s。\n"+
 		"最近已生成过的词条（禁止重复或高度相似）：%s。\n"+
 		"只输出 %d 行，严格格式为 [YYYY-MM-DD HH]{词条}；每个所列小时必须有 %d 行，其中至少 %d 行完全不含 Ingress 元素。",
 		promptDefault, todayChineseDateTime(t), aiEntriesPerHour, strings.Join(hours, "、"),
@@ -444,7 +450,7 @@ func parseAIHourlyResults(content string, t time.Time) ([]AIRecentResult, error)
 	seen := make(map[string]bool)
 	for _, match := range aiHourlyResultPattern.FindAllStringSubmatch(content, -1) {
 		hour, text := match[1], strings.TrimSpace(match[2])
-		if !expected[hour] || text == "" || len([]rune(text)) > 64 || seen[hour+"\x00"+text] {
+		if !expected[hour] || text == "" || aiEntryWords(text) > aiMaxEntryWords || len([]rune(text)) > 64 || seen[hour+"\x00"+text] {
 			continue
 		}
 		seen[hour+"\x00"+text] = true
