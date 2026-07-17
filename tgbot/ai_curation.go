@@ -15,7 +15,31 @@ const (
 	aiEntriesPerHour   = 10
 	aiRefillThreshold  = 3
 	aiRecentResultSize = 100
+	// AI 词条硬上限（按词计：1 个英文单词 = 1 词，2 个汉字 = 1 词）。提名上限 64 字是给真人的，AI 超过这个数就是在写作文。
+	aiMaxEntryWords = 12
 )
+
+// aiEntryWords 按“英文单词算 1 词、每 2 个汉字算 1 词”计数；
+// 连续 ASCII 字母/数字算一个单词，其余非空白字符按汉字计。
+func aiEntryWords(s string) int {
+	words, cjk := 0, 0
+	inWord := false
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			if !inWord {
+				words++
+				inWord = true
+			}
+		case r == ' ', r == '\t':
+			inWord = false
+		default:
+			inWord = false
+			cjk++
+		}
+	}
+	return words + (cjk+1)/2
+}
 
 type AIRecentResult struct {
 	Text        string `json:"text"`
